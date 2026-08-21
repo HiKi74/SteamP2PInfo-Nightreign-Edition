@@ -1,0 +1,65 @@
+﻿<mah:MetroWindow x:Class="SteamP2PInfo.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:mah="clr-namespace:MahApps.Metro.Controls;assembly=MahApps.Metro"
+        xmlns:local="clr-namespace:SteamP2PInfo"
+        xmlns:config="clr-namespace:SteamP2PInfo.Config"
+        mc:Ignorable="d"
+        WindowStartupLocation="CenterScreen"
+        Title="Steam P2P Info [VERSION]" Width="800" Height="450">
+    <mah:MetroWindow.RightWindowCommands>
+        <mah:WindowCommands>
+            <TextBlock VerticalAlignment="Center" Margin="0 0 10 0">           
+                <Hyperlink NavigateUri="" RequestNavigate="webLink_RequestNavigate" Name="linkUpdate">
+                    <TextBlock FontWeight="Bold" Name="textUpdate"></TextBlock>
+                </Hyperlink>
+            </TextBlock>
+            <TextBlock VerticalAlignment="Center" Margin="5 0 5 0">
+                <Hyperlink Name="labelGameState" NavigateUri="" RequestNavigate="labelGameState_RequestNavigate">
+                    <TextBlock Foreground="Orange" Name="textGameState">附加游戏</TextBlock>
+                </Hyperlink>
+            </TextBlock>
+        </mah:WindowCommands>
+    </mah:MetroWindow.RightWindowCommands>
+    <mah:MetroWindow.Resources>
+        <local:HotkeyConverter x:Key="HotkeyConverter" />
+        <Style x:Key="textCenter" TargetType="{x:Type TextBlock}">
+            <Setter Property="TextAlignment" Value="Center"></Setter>
+        </Style>
+    </mah:MetroWindow.Resources>
+    <Grid>
+        <mah:MetroTabControl Name="tabCtrl">
+            <mah:MetroTabItem Header="会话信息" IsEnabled="True">
+                <DataGrid Margin="10 0 10 0" Name="dataGridSession" ItemsSource="{Binding}" AutoGenerateColumns="False" MouseDoubleClick="dataGridSession_DoubleClick">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="玩家昵称" IsReadOnly="True" Binding="{Binding Name}"></DataGridTextColumn>
+                        <DataGridTextColumn Header="Steam ID" IsReadOnly="True" Binding="{Binding SteamID}" x:Name="ColumnSteamID"></DataGridTextColumn>
+                        <DataGridTextColumn Header="游玩时长" IsReadOnly="True" Binding="{Binding PlaytimeText}"></DataGridTextColumn>
+                        <!--<DataGridTextColumn Header="Main Steam ID" IsReadOnly="True" Binding="{Binding MainSteamID}" x:Name="ColumnSteamIDMain"></DataGridTextColumn>-->
+                        <DataGridTextColumn Header="Ping" IsReadOnly="True" Binding="{Binding PingText}">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="{x:Type TextBlock}">
+                                    <Setter Property="Foreground" Value="{Binding PingColor}"></Setter>
+                                    <Setter Property="TextAlignment" Value="Center"></Setter>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="连接质量" IsReadOnly="True" Binding="{Binding QualityText}" ElementStyle="{StaticResource textCenter}"></DataGridTextColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </mah:MetroTabItem>
+            <mah:MetroTabItem Header="配置">
+                <ScrollViewer>
+                    <StackPanel Orientation="Vertical" Name="ConfigTab">
+                        <Label Margin="10 0 10 0" ToolTip="Steam Web API Key（可选）。填写后可走 Steam 官方接口获取游玩时长，更稳定。可在 https://steamcommunity.com/dev/apikey 免费申请。">Steam Web API Key（可选）：</Label>
+                        <TextBox Margin="10 0 10 0" Text="{Binding Source={x:Static local:Settings.Default}, Path=SteamWebApiKey}" Width="500" HorizontalAlignment="Left"></TextBox>
+                        <Label Margin="10 0 10 0" ToolTip="Steam IPC 日志文件路径。仅当 Steam 安装在其他位置时才需要修改。">Steam 日志文件路径：</Label>
+                        <TextBox Margin="10 0 10 0" Text="{Binding Source={x:Static local:Settings.Default}, Path=SteamLogPath}" Width="500" HorizontalAlignment="Left"></TextBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </mah:MetroTabItem>
+        </mah:MetroTabControl>
+    </Grid>
+</mah:MetroWindow>
