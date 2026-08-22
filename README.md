@@ -29,8 +29,10 @@ connection quality, with a customizable in-game overlay.
 - 可选 Steam Web API Key，更稳定获取游玩时长 / Optional Web API key support
 
 ## 截图 / Screenshots
+<img width="1200" height="675" alt="image" src="https://github.com/user-attachments/assets/f1e9bf9a-c8e1-4f58-9534-fa8e86df50cb" />
 
-（待补充 / TODO）
+
+
 
 ## 使用方法 / Usage
 
