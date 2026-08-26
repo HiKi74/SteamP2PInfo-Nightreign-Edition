@@ -110,10 +110,17 @@ namespace SteamP2PInfo
         {
             this.Invoke(() =>
             {
-                // Necessary to close the program after the game exits, as SteamAPI_Shutdown isn't
-                // sufficient to have steam recognize the game is no longer running
+                if (wInfo == null)
+                    return;
+
+                // When the game window disappears, shut down the Steam session
+                // (so Steam no longer thinks the game is running) but keep the
+                // tool open so the user can re-attach or edit config.
                 if (!WinAPI.User32.IsWindow(wInfo.Handle))
-                    Close();
+                {
+                    HandleGameExit();
+                    return;
+                }
 
                 if (HotkeyManager.Enabled && !GameConfig.Current.HotkeysEnabled)
                     HotkeyManager.Disable();
@@ -249,6 +256,41 @@ namespace SteamP2PInfo
             if (overlay != null) overlay.Close();
             HotkeyManager.Disable();
             ETWPingMonitor.Stop();
+            try
+            {
+                SteamAPI.Shutdown();
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        /// <summary>
+        /// The game window is gone. End the Steam API session so Steam stops
+        /// treating the game as running, stop the overlay and ping monitor, and
+        /// return the tool to the "not attached" state so it can be re-attached.
+        /// </summary>
+        private void HandleGameExit()
+        {
+            try
+            {
+                SteamAPI.Shutdown();
+            }
+            catch (Exception)
+            {
+            }
+
+            ETWPingMonitor.Stop();
+            HotkeyManager.Disable();
+            if (overlay != null)
+            {
+                overlay.Close();
+                overlay = null;
+            }
+            peers.Clear();
+            wInfo = null;
+            textGameState.Text = "附加游戏";
+            textGameState.Foreground = Brushes.Orange;
         }
 
 

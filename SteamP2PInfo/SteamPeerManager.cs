@@ -45,6 +45,21 @@ namespace SteamP2PInfo
 
         public static void Init()
         {
+            // Reset any state left from a previous session so re-attaching works
+            // cleanly after the game has exited.
+            sr?.Dispose();
+            fs?.Close();
+            fs?.Dispose();
+            if (fsWatcher != null)
+            {
+                fsWatcher.EnableRaisingEvents = false;
+                fsWatcher.Dispose();
+                fsWatcher = null;
+            }
+            mPeers.Clear();
+            lastPosInLog = null;
+            mustReopenLog = true;
+
             fsWatcher = new FileSystemWatcher(Path.GetDirectoryName(Settings.Default.SteamLogPath));
             fsWatcher.Filter = Path.GetFileName(Settings.Default.SteamLogPath);
             fsWatcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size;
