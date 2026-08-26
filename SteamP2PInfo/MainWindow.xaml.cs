@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -43,6 +43,7 @@ namespace SteamP2PInfo
         private const string IPC_LOGGING_MARKER = "Started IPC logging for BeginAuthSession,EndAuthSession,LeaveLobby,SendClanChatMessage.";
 
         private WindowSelectDialog.WindowInfo wInfo;
+        private Process steamHelperProcess;
 
         public MainWindow()
         {
@@ -256,6 +257,7 @@ namespace SteamP2PInfo
             if (overlay != null) overlay.Close();
             HotkeyManager.Disable();
             ETWPingMonitor.Stop();
+            StopSteamHelper();
             try
             {
                 SteamAPI.Shutdown();
@@ -280,6 +282,11 @@ namespace SteamP2PInfo
             {
             }
 
+            // SteamAPI_Shutdown 不会清除 Steam 的进程登记（Steam 会认为游戏
+            // 仍在运行直到登记的进程结束）。游戏进程登记由隐藏的辅助进程承担，
+            // 这里直接结束辅助进程，Steam 随即清除“游戏中”状态，而主工具保持打开。
+            StopSteamHelper();
+
             ETWPingMonitor.Stop();
             HotkeyManager.Disable();
             if (overlay != null)
@@ -291,6 +298,60 @@ namespace SteamP2PInfo
             wInfo = null;
             textGameState.Text = "附加游戏";
             textGameState.Foreground = Brushes.Orange;
+        }
+
+        /// <summary>
+        /// 启动一个隐藏的辅助进程，让它在主工具之后调用 SteamAPI.Init()，从而
+        /// 接管 Steam 的“游戏进程”登记。游戏退出时只需结束辅助进程，Steam 就会
+        /// 清除“游戏中”状态，主工具保持打开。
+        /// </summary>
+        private void StartSteamHelper()
+        {
+            try
+            {
+                StopSteamHelper();
+
+                if (GameConfig.Current == null || GameConfig.Current.SteamAppId <= 0)
+                    return;
+
+                string exePath = Process.GetCurrentProcess().MainModule.FileName;
+                steamHelperProcess = Process.Start(new ProcessStartInfo(exePath)
+                {
+                    Arguments = $"--helper {Process.GetCurrentProcess().Id} {GameConfig.Current.SteamAppId}",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                });
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteLine("[HELPER] 启动辅助进程失败: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// 结束辅助进程，使 Steam 不再认为游戏在运行。
+        /// </summary>
+        private void StopSteamHelper()
+        {
+            if (steamHelperProcess == null)
+                return;
+
+            try
+            {
+                if (!steamHelperProcess.HasExited)
+                    steamHelperProcess.Kill();
+            }
+            catch (Exception)
+            {
+            }
+            try
+            {
+                steamHelperProcess.Dispose();
+            }
+            catch (Exception)
+            {
+            }
+            steamHelperProcess = null;
         }
 
 
@@ -375,6 +436,7 @@ namespace SteamP2PInfo
             }
 
             wInfo = selected;
+            StartSteamHelper();
             SteamPeerManager.Init();
 
             // Enables IPC logging implicitly (no console UI involved); the
