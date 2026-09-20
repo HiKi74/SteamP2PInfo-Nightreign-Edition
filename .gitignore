@@ -363,5 +363,7 @@ MigrationBackup/
 FodyWeavers.xsd
 
 # Runtime-generated files (this fork)
-config/
+# Keep this anchored to the repository root: a bare "config/" also matches the
+# source folder SteamP2PInfo/Config, which made fresh clones fail to build.
+/config/
 crash.log

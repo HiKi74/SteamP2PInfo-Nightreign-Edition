@@ -274,7 +274,6 @@
     <Compile Include="ReverseTextReader.cs" />
     <Compile Include="SteamPeerBase.cs" />
     <Compile Include="SteamPlaytime.cs" />
-    <Compile Include="SteamHelper.cs" />
     <Compile Include="SteamPaths.cs" />
     <Compile Include="ETWPingMonitor.cs" />
     <Compile Include="FormatUtils.cs" />
