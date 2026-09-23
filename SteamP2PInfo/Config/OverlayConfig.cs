@@ -57,6 +57,15 @@ namespace SteamP2PInfo.Config
             })]
         public bool ShowPlaytime { get; set; } = true;
 
+        [JsonProperty("show_relation")]
+        [ConfigBindingElement("显示好友关系", typeof(ToggleSwitch), "IsOnProperty",
+            Tooltip: "同一局里两名玩家互为 Steam 好友时，在对应行显示“好友”（大概率是双排）。\n需要在“配置”页填写 Steam Web API Key，且对方好友列表公开时才有效，否则该列留空。",
+            UIElementProperties: new object[] {
+                new object[] { "OnContent", "开" },
+                new object[] { "OffContent", "关" }
+            })]
+        public bool ShowRelation { get; set; } = true;
+
         [JsonProperty("hotkey")]
         [ConfigBindingElement("悬浮窗热键", typeof(HotKeyBox), "HotKeyProperty",
             Tooltip: "用于显示/隐藏悬浮窗的热键。",

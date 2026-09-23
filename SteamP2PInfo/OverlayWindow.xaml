@@ -68,6 +68,13 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Relation" Width="70" Visibility="{Binding Source={x:Static config:GameConfig.Current}, Path=OverlayConfig.ShowRelation, Converter={StaticResource VisibleIfTrueConverter}}">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <local:OverlayTextBlock Text="{Binding RelationText}" TextTrimming="CharacterEllipsis" Style="{StaticResource defaultStyle}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
     </StackPanel>

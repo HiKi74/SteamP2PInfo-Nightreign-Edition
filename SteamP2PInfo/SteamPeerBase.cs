@@ -59,6 +59,29 @@ namespace SteamP2PInfo
         public string PlaytimeText { get { return SteamPlaytime.GetText(SteamID); } }
 
         /// <summary>
+        /// "好友" when this peer is Steam friends with another player detected in
+        /// the same session (a likely pre-made pair); empty while the relation is
+        /// unknown, which is also the case when no API key is configured or the
+        /// player's friends list is private. See SteamFriendship for details.
+        /// </summary>
+        public string RelationText
+        {
+            get
+            {
+                foreach (SteamPeerBase other in SteamPeerManager.GetPeers())
+                {
+                    if (other == null || other.SteamID.m_SteamID == SteamID.m_SteamID)
+                        continue;
+
+                    if (SteamFriendship.AreFriends(SteamID, other.SteamID))
+                        return "\u597D\u53CB"; // 好友
+                }
+
+                return "";
+            }
+        }
+
+        /// <summary>
         /// Ping as a display string ("--" while not measured, so the column keeps
         /// a stable width and position).
         /// </summary>
