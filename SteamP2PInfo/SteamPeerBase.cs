@@ -60,24 +60,33 @@ namespace SteamP2PInfo
 
         /// <summary>
         /// "好友" when this peer is Steam friends with another player detected in
-        /// the same session (a likely pre-made pair); empty while the relation is
-        /// unknown, which is also the case when no API key is configured or the
-        /// player's friends list is private. See SteamFriendship for details.
+        /// the same session (a likely pre-made pair), "私密" when Steam hides the
+        /// friends lists needed to answer, and empty while the answer is unknown.
+        /// See SteamFriendship for details.
         /// </summary>
         public string RelationText
         {
             get
             {
+                bool hidden = false;
+
                 foreach (SteamPeerBase other in SteamPeerManager.GetPeers())
                 {
                     if (other == null || other.SteamID.m_SteamID == SteamID.m_SteamID)
                         continue;
 
-                    if (SteamFriendship.AreFriends(SteamID, other.SteamID))
-                        return "\u597D\u53CB"; // 好友
+                    switch (SteamFriendship.GetRelation(SteamID, other.SteamID))
+                    {
+                        case SteamFriendship.RelationState.Friends:
+                            return "\u597D\u53CB"; // 好友
+
+                        case SteamFriendship.RelationState.Private:
+                            hidden = true;
+                            break;
+                    }
                 }
 
-                return "";
+                return hidden ? "\u79C1\u5BC6" : ""; // 私密
             }
         }
 

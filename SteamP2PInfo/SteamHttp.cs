@@ -66,6 +66,11 @@ namespace SteamP2PInfo
 
         private static string Download(string url, WebProxy proxy)
         {
+            // Steam only answers over TLS 1.2+, which .NET Framework does not
+            // enable by default. Setting it here keeps every lookup working even
+            // when no other request has enabled it yet.
+            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+
             // Explicit timeouts so a blocked network (e.g. steamcommunity
             // unreachable) fails fast instead of hanging background threads.
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
