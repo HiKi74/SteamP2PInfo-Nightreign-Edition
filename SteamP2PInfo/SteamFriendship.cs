@@ -35,13 +35,13 @@ namespace SteamP2PInfo
         }
 
         /// <summary>
-        /// A readable friends list is kept for an hour. Hidden lists are retried
-        /// every ten minutes (privacy settings can change) and failed requests
-        /// after two minutes.
+        /// A lookup that produced a friends list is kept for the rest of the
+        /// session: the answer cannot change while the tool runs, so there is no
+        /// reason to ask Steam again. A lookup that came back empty (hidden list,
+        /// blocked network) is retried every two minutes, so a player who makes
+        /// their list public mid-session shows up on his own.
         /// </summary>
-        private static readonly TimeSpan RefreshInterval = TimeSpan.FromHours(1);
-        private static readonly TimeSpan HiddenInterval = TimeSpan.FromMinutes(10);
-        private static readonly TimeSpan ErrorInterval = TimeSpan.FromMinutes(2);
+        private static readonly TimeSpan RetryInterval = TimeSpan.FromMinutes(2);
 
         /// <summary>The community friends page tags every entry with its Steam ID.</summary>
         private static readonly Regex COMMUNITY_FRIEND_REGEX =
@@ -54,7 +54,6 @@ namespace SteamP2PInfo
             public bool Fetching = false;
             public bool Resolved = false;      // the list was read (it may be empty)
             public bool Hidden = false;        // Steam refuses to show the list
-            public bool NetworkError = false;  // the request itself failed
         }
 
         /// <summary>Outcome of reading one player's friends list.</summary>
@@ -62,7 +61,6 @@ namespace SteamP2PInfo
         {
             public HashSet<ulong> Friends;    // null when the list could not be read
             public bool Hidden;
-            public bool NetworkError;
         }
 
         private static readonly Dictionary<ulong, Entry> mCache = new Dictionary<ulong, Entry>();
@@ -94,11 +92,14 @@ namespace SteamP2PInfo
                 if (firstEntry.Resolved || secondEntry.Resolved)
                     return RelationState.NotFriends;
 
-                // "Private" is only final once both lookups have settled: while
-                // one of them is still running the answer may well become a
-                // readable list, which would be reported as "not friends".
+                // Nothing readable on either side. "Private" is only claimed once
+                // both sides have actually been queried: while a first lookup is
+                // still running the answer may well become a readable list. A
+                // re-check keeps the previous answer instead of flickering back to
+                // "unknown", which is why this tests the last finished lookup and
+                // not the "fetching" flag.
                 if ((firstEntry.Hidden || secondEntry.Hidden) &&
-                    !firstEntry.Fetching && !secondEntry.Fetching)
+                    HasBeenQueried(firstEntry) && HasBeenQueried(secondEntry))
                     return RelationState.Private;
 
                 return RelationState.Unknown;
@@ -108,6 +109,12 @@ namespace SteamP2PInfo
         private static bool Contains(Entry entry, ulong steamId)
         {
             return entry.Resolved && entry.Friends.Contains(steamId);
+        }
+
+        /// <summary>True once at least one lookup of this list has finished.</summary>
+        private static bool HasBeenQueried(Entry entry)
+        {
+            return entry.LastFetch != DateTime.MinValue;
         }
 
         /// <summary>
@@ -125,15 +132,10 @@ namespace SteamP2PInfo
                 return entry;
             }
 
-            if (!entry.Fetching)
-            {
-                TimeSpan interval = entry.Resolved
-                    ? RefreshInterval
-                    : (entry.NetworkError ? ErrorInterval : HiddenInterval);
-
-                if (DateTime.UtcNow - entry.LastFetch > interval)
-                    StartFetch(steamId, entry);
-            }
+            // Settled answers stay settled; only an empty result is retried.
+            if (!entry.Fetching && !entry.Resolved &&
+                DateTime.UtcNow - entry.LastFetch > RetryInterval)
+                StartFetch(steamId, entry);
 
             return entry;
         }
@@ -151,7 +153,7 @@ namespace SteamP2PInfo
                 }
                 catch (Exception)
                 {
-                    result = new FetchResult() { NetworkError = true };
+                    result = new FetchResult();
                 }
 
                 lock (mLock)
@@ -170,7 +172,6 @@ namespace SteamP2PInfo
                         entry.Hidden = result.Hidden;
                     }
 
-                    entry.NetworkError = result.Friends == null && result.NetworkError;
                     entry.LastFetch = DateTime.UtcNow;
                     entry.Fetching = false;
                 }
@@ -219,15 +220,12 @@ namespace SteamP2PInfo
             {
                 HttpWebResponse response = ex.Response as HttpWebResponse;
                 if (response != null && response.StatusCode == HttpStatusCode.Unauthorized)
-                    result.Hidden = true;        // the player hid the friends list
-                else
-                    result.NetworkError = true;  // blocked network or rejected key
+                    result.Hidden = true; // the player hid the friends list
 
                 return null;
             }
             catch (Exception)
             {
-                result.NetworkError = true;
                 return null;
             }
 
@@ -257,7 +255,6 @@ namespace SteamP2PInfo
             }
             catch (Exception)
             {
-                result.NetworkError = true;
                 return null;
             }
 
