@@ -68,7 +68,8 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTemplateColumn Header="Relation" Width="70" Visibility="{Binding Source={x:Static config:GameConfig.Current}, Path=OverlayConfig.ShowRelation, Converter={StaticResource VisibleIfTrueConverter}}">
+                <!-- 110 keeps the widest text ("查询中") from being clipped at the default font size. -->
+                <DataGridTemplateColumn Header="Relation" Width="110" Visibility="{Binding Source={x:Static config:GameConfig.Current}, Path=OverlayConfig.ShowRelation, Converter={StaticResource VisibleIfTrueConverter}}">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <local:OverlayTextBlock Text="{Binding RelationText}" TextTrimming="CharacterEllipsis" Style="{StaticResource defaultStyle}" />

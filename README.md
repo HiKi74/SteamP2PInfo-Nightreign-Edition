@@ -27,10 +27,10 @@ connection quality, with a customizable in-game overlay.
 - 固定列宽悬浮窗，信息始终对齐 / Fixed-width overlay columns, always aligned
 - 全中文 / 全英文双版本 / Fully Chinese & English builds
 - 可选 Steam Web API Key，更稳定获取游玩时长 / Optional Web API key support
-- 好友关系列：同局两人互为好友时显示“好友”（大概率双排），好友列表被隐藏时显示
-  “私密”。不需要 API Key：未填写时自动读取对方公开的社区好友页
-  Friends column: "好友" (friends, likely a premade pair) or "私密" (list hidden);
-  works without an API key by reading the public community friends page
+- 好友关系列：好友 / 野排 / 私密 / 查询中。不需要 API Key：未填写时自动读取对方
+  公开的社区好友页
+  Friends column: 好友 (premade pair) / 野排 (not friends) / 私密 (list hidden) /
+  查询中 (looking up); works without an API key via the public community friends page
 
 ## 截图 / Screenshots
 
@@ -53,10 +53,10 @@ connection quality, with a customizable in-game overlay.
   Playtime "-"? Network can't reach Steam; use a proxy or an API key.
 - 时长“未公开”/“Private”？对方游戏详情私密，公开方式无法获取。
   "Private"? The player's game details are private (Steam privacy rule).
-- “关系”列显示“私密”？双方好友列表都设为私密，Steam 不允许第三方读取，
-  无法判断两人是否为好友（不会误报成“好友”）。
-  Relation "私密"? Both players hide their friends list, so Steam will not tell,
-  and the tool refuses to guess. A public list on either side is enough.
+- “关系”列的四种状态？“好友”= 互为 Steam 好友（大概率双排）；“野排”= 已确定不是
+  好友；“私密”= 双方好友列表都隐藏，无法判断（不会误报）；“查询中”= 正在读取。
+  Relation states? 好友 = mutual Steam friends; 野排 = proven not friends;
+  私密 = both lists hidden, so the tool refuses to guess; 查询中 = lookup running.
 - 全屏独占不显示悬浮窗：悬浮窗仅支持窗口化 / 无边框。
   Overlay works only in windowed / borderless mode.
 

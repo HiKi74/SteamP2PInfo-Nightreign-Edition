@@ -59,16 +59,18 @@ namespace SteamP2PInfo
         public string PlaytimeText { get { return SteamPlaytime.GetText(SteamID); } }
 
         /// <summary>
-        /// "好友" when this peer is Steam friends with another player detected in
-        /// the same session (a likely pre-made pair), "私密" when Steam hides the
-        /// friends lists needed to answer, and empty while the answer is unknown.
-        /// See SteamFriendship for details.
+        /// Relation of this peer to the other players of the session: "好友" when
+        /// they are Steam friends with one of them (a likely pre-made pair),
+        /// "野排" when a readable friends list proves that they are not, "私密"
+        /// when Steam hides the lists needed to answer, and "查询中" while the
+        /// lookups are still running. See SteamFriendship for details.
         /// </summary>
         public string RelationText
         {
             get
             {
                 bool hidden = false;
+                bool notFriends = false;
 
                 foreach (SteamPeerBase other in SteamPeerManager.GetPeers())
                 {
@@ -80,13 +82,23 @@ namespace SteamP2PInfo
                         case SteamFriendship.RelationState.Friends:
                             return "\u597D\u53CB"; // 好友
 
+                        case SteamFriendship.RelationState.NotFriends:
+                            notFriends = true;
+                            break;
+
                         case SteamFriendship.RelationState.Private:
                             hidden = true;
                             break;
                     }
                 }
 
-                return hidden ? "\u79C1\u5BC6" : ""; // 私密
+                if (hidden)
+                    return "\u79C1\u5BC6"; // 私密
+
+                if (notFriends)
+                    return "\u91CE\u6392"; // 野排
+
+                return "\u67E5\u8BE2\u4E2D"; // 查询中
             }
         }
 
