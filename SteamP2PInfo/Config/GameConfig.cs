@@ -111,40 +111,127 @@ namespace SteamP2PInfo.Config
         public event PropertyChangedEventHandler PropertyChanged;
 
         /// <summary>
+        /// Folder holding the per-game configuration files. It sits next to the
+        /// executable instead of relying on the working directory, which differs
+        /// depending on how the tool was started (shortcut, elevated launch, ...).
+        /// </summary>
+        private static string ConfigDirectory
+        {
+            get { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config"); }
+        }
+
+        private static string ConfigPath(string processName)
+        {
+            return Path.Combine(ConfigDirectory, processName + ".json");
+        }
+
+        /// <summary>
         /// Load a settings file as the current game settings, or create a new file if the game does not have associated settings yet.
         /// </summary>
         /// <param name="processName"></param>
         public static bool LoadOrCreate(string processName)
         {
-            if (!Directory.Exists("config"))
-                Directory.CreateDirectory("config");
+            try
+            {
+                Directory.CreateDirectory(ConfigDirectory);
+            }
+            catch (Exception)
+            {
+                // Read-only installation folder: carry on with defaults instead
+                // of failing the whole attach.
+            }
 
-            if (!File.Exists($"config\\{processName}.json"))
+            string path = ConfigPath(processName);
+            GameConfig loaded = null;
+
+            if (File.Exists(path))
             {
-                Current = new GameConfig() { ProcessName = processName };
-                Current.Save();
+                try
+                {
+                    loaded = JsonConvert.DeserializeObject<GameConfig>(File.ReadAllText(path));
+                }
+                catch (Exception)
+                {
+                    // Corrupted JSON: fall through and start from the defaults.
+                }
             }
-            else
+
+            if (loaded == null)
             {
-                string json = File.ReadAllText($"config\\{processName}.json");
-                Current = JsonConvert.DeserializeObject<GameConfig>(json);
+                // Missing, empty or unreadable file (an interrupted save used to
+                // leave an empty file behind, which crashed the tool on the next
+                // attach). Keep the broken file for reference and use defaults.
+                BackupBrokenConfig(path);
+                loaded = new GameConfig();
             }
+
+            if (string.IsNullOrEmpty(loaded.ProcessName))
+                loaded.ProcessName = processName;
+
+            Current = loaded;
 
             // This build is dedicated to Nightreign: always fill in the correct App ID
             // so the user never has to type it manually.
             if (Current.SteamAppId == 0 && IsNightreignProcess(Current.ProcessName))
-            {
                 Current.SteamAppId = NightreignAppId;
+
+            try
+            {
                 Current.Save();
+            }
+            catch (Exception)
+            {
+                // The configuration could not be written (read-only folder, disk
+                // full, ...). The tool still works with the in-memory settings.
             }
 
             return false;
         }
 
+        private static void BackupBrokenConfig(string path)
+        {
+            try
+            {
+                if (!File.Exists(path))
+                    return;
+
+                string backup = path + ".broken";
+                if (File.Exists(backup))
+                    File.Delete(backup);
+
+                File.Move(path, backup);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
         public void Save()
         {
+            Directory.CreateDirectory(ConfigDirectory);
+
+            string path = ConfigPath(Current.ProcessName);
             string json = JsonConvert.SerializeObject(Current, Formatting.Indented);
-            File.WriteAllText($"config\\{Current.ProcessName}.json", json);
+
+            // Write to a temporary file first: an interrupted save can then never
+            // leave a half-written (or empty) config behind.
+            string temp = path + ".tmp";
+            File.WriteAllText(temp, json);
+
+            try
+            {
+                if (File.Exists(path))
+                    File.Replace(temp, path, null);
+                else
+                    File.Move(temp, path);
+            }
+            catch (Exception)
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+
+                File.Move(temp, path);
+            }
         }
     }
 }
