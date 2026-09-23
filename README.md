@@ -31,8 +31,10 @@ connection quality, with a customizable in-game overlay.
   公开的社区好友页
   Friends column: 好友 (premade pair) / 野排 (not friends) / 私密 (list hidden) /
   查询中 (looking up); works without an API key via the public community friends page
-- 好友关系只查一次，读到结果后不再重复查询；读不到时每 2 分钟自动重试
-  A friends list is looked up once and then kept; failed lookups retry every 2 min
+- 查询策略：读到结果就定住、不再重复查询；没读到时每 2 分钟重试；检测到新玩家
+  （新的一局）时清空缓存重新查询
+  Lookups are done once and kept; empty results retry every 2 min, and a newly
+  matched player invalidates the cached results for the whole lobby
 
 ## 截图 / Screenshots
 

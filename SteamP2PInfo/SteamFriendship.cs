@@ -65,6 +65,7 @@ namespace SteamP2PInfo
 
         private static readonly Dictionary<ulong, Entry> mCache = new Dictionary<ulong, Entry>();
         private static readonly object mLock = new object();
+        private static int mSessionRevision = -1;
 
         /// <summary>
         /// Returns what is known about two players. A missing answer is looked up
@@ -80,6 +81,8 @@ namespace SteamP2PInfo
 
             lock (mLock)
             {
+                ResetCacheIfSessionChanged();
+
                 Entry firstEntry = GetEntry(first);
                 Entry secondEntry = GetEntry(second);
 
@@ -104,6 +107,21 @@ namespace SteamP2PInfo
 
                 return RelationState.Unknown;
             }
+        }
+
+        /// <summary>
+        /// A newly detected player starts a new session as far as the lookups are
+        /// concerned: cached friend lists are dropped, so a new match is queried
+        /// again instead of reusing the answer of the previous lobby.
+        /// </summary>
+        private static void ResetCacheIfSessionChanged()
+        {
+            int revision = SteamPeerManager.SessionRevision;
+            if (revision == mSessionRevision)
+                return;
+
+            mSessionRevision = revision;
+            mCache.Clear();
         }
 
         private static bool Contains(Entry entry, ulong steamId)

@@ -43,6 +43,15 @@ namespace SteamP2PInfo
         /// </summary>
         private static Dictionary<CSteamID, SteamPeerInfo> mPeers = new Dictionary<CSteamID, SteamPeerInfo>();
 
+        /// <summary>
+        /// Bumped every time a new player shows up in the session. The playtime
+        /// and friends columns watch it to drop their cached lookups, so a fresh
+        /// match always gets queried again instead of reusing old results.
+        /// </summary>
+        private static volatile int mSessionRevision = 0;
+
+        public static int SessionRevision { get { return mSessionRevision; } }
+
         public static void Init()
         {
             fsWatcher = new FileSystemWatcher(Path.GetDirectoryName(Settings.Default.SteamLogPath));
@@ -185,6 +194,7 @@ namespace SteamP2PInfo
                                     newPeerInfo.lastDisconnectTimeMS = sw.ElapsedMilliseconds;
                                 }
                                 mPeers.Add(steamID, newPeerInfo);
+                                mSessionRevision++;
                             }
                         }
                         else
@@ -284,6 +294,7 @@ namespace SteamP2PInfo
                 if (newPeerInfo.peer is null)
                     Logger.WriteLine($"[PEER CONNECT] Player \"{sid}\" was detected, but we don't have a P2P connection to them yet");
                 mPeers.Add(sid, newPeerInfo);
+                mSessionRevision++;
             }
         }
 

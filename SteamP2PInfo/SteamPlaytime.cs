@@ -22,13 +22,15 @@ namespace SteamP2PInfo
     static class SteamPlaytime
     {
         private const int NIGHTREIGN_APPID = Config.GameConfig.NightreignAppId;
-        private static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(5);
 
         /// <summary>
-        /// Failed lookups are retried much sooner than successful ones, so a
-        /// single timeout does not keep "-" on screen for five minutes.
+        /// A playtime that was read is kept for the rest of the match - the number
+        /// only grows and nobody needs it to the minute - and a lookup that ended
+        /// without a value ("not public", blocked network) is retried every two
+        /// minutes, exactly like the friends column. Both caches are dropped when
+        /// a new player shows up, so every match is looked up again.
         /// </summary>
-        private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan RetryInterval = TimeSpan.FromMinutes(2);
 
         private const string LOADING_TEXT = "\u67E5\u8BE2\u4E2D"; // 查询中
         private const string PRIVATE_TEXT = "\u672A\u516C\u5F00"; // 未公开
@@ -39,11 +41,12 @@ namespace SteamP2PInfo
             public string Text = LOADING_TEXT;
             public DateTime LastFetch = DateTime.MinValue;
             public bool Fetching = false;
-            public bool Failed = false;
+            public bool Settled = false; // a value was read and is kept as is
         }
 
         private static readonly Dictionary<ulong, Entry> mCache = new Dictionary<ulong, Entry>();
         private static readonly object mLock = new object();
+        private static int mSessionRevision = -1;
 
         /// <summary>
         /// Returns the current display text for the given Steam ID. Triggers a
@@ -54,21 +57,35 @@ namespace SteamP2PInfo
             ulong id = steamId.m_SteamID;
             lock (mLock)
             {
+                ResetCacheIfSessionChanged();
+
                 if (!mCache.TryGetValue(id, out Entry entry))
                 {
                     entry = new Entry();
                     mCache[id] = entry;
                     StartFetch(id, entry);
                 }
-                else if (!entry.Fetching)
-                {
-                    TimeSpan interval = entry.Failed ? RetryInterval : RefreshInterval;
-                    if (DateTime.UtcNow - entry.LastFetch > interval)
-                        StartFetch(id, entry);
-                }
+                else if (!entry.Fetching && !entry.Settled &&
+                         DateTime.UtcNow - entry.LastFetch > RetryInterval)
+                    StartFetch(id, entry);
 
                 return entry.Text;
             }
+        }
+
+        /// <summary>
+        /// A newly detected player starts a new session as far as the lookups are
+        /// concerned: every cached value is dropped, so a new match is queried
+        /// again instead of showing what the previous lobby was told.
+        /// </summary>
+        private static void ResetCacheIfSessionChanged()
+        {
+            int revision = SteamPeerManager.SessionRevision;
+            if (revision == mSessionRevision)
+                return;
+
+            mSessionRevision = revision;
+            mCache.Clear();
         }
 
         private static void StartFetch(ulong steamId, Entry entry)
@@ -89,7 +106,7 @@ namespace SteamP2PInfo
                 lock (mLock)
                 {
                     entry.Text = text;
-                    entry.Failed = text == ERROR_TEXT;
+                    entry.Settled = text != ERROR_TEXT && text != PRIVATE_TEXT;
                     entry.LastFetch = DateTime.UtcNow;
                     entry.Fetching = false;
                 }
