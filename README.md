@@ -19,6 +19,10 @@ connection quality, with a customizable in-game overlay.
 
 - 自动识别并附加游戏窗口（Steam AppID 2622380），无需选窗口 / 填 AppID
   Auto-detect & attach to the game window (AppID 2622380)
+- 自动附加：启动后常驻后台，检测到游戏窗口即自动附加；游戏退出后自动退出并稍后
+  重启待命，多局无需手动操作（配置页可关闭）
+  Auto attach: it watches for the game window and attaches by itself, so nothing has
+  to be clicked between matches (can be turned off in the config tab)
 - 自动静默开启 Steam IPC 日志（`steam.exe +log_ipc`），Steam 重启后自动重新开启
   Silently enables Steam IPC logging; re-enabled automatically after restarts
 - 附加时回溯日志，找回已连上的玩家 / Backfills players connected before attach
@@ -71,6 +75,10 @@ connection quality, with a customizable in-game overlay.
   Steam still shows "in game"? The tool counts as a game process too, so it has to
   exit for Steam to clear that; it starts a fresh instance right away for the next
   match. Closing the window by hand does not restart it.
+- 游戏退出后工具会卡一下？Steam 接口在游戏关闭瞬间会阻塞界面线程，V1.0.3 改为独立
+  线程监测游戏窗口并负责退出（0.5 秒一次，最多等 3 秒后强制结束进程）。
+  Tool freezes on game exit? Steam calls block the UI thread right when the game
+  shuts down; V1.0.3 watches the window on its own thread instead.
 - 全屏独占不显示悬浮窗：悬浮窗仅支持窗口化 / 无边框。
   Overlay works only in windowed / borderless mode.
 

@@ -38,6 +38,7 @@ namespace SteamP2PInfo
 
         private static TraceEventSession kernelSession;
         private static Thread eventThread;
+        private static int mStopRequested;
         public static bool Running { get; private set; }
         private static Dictionary<ulong, PingInfo> pings;
         private static readonly object lockObj;
@@ -96,10 +97,23 @@ namespace SteamP2PInfo
         /// </summary>
         public static void Stop()
         {
+            // Called by both the shutdown watchdog and the window close: stop the
+            // session exactly once, and never let a failure escape (the process may
+            // be on its way out).
+            if (Interlocked.Exchange(ref mStopRequested, 1) == 1)
+                return;
+
             if (!Running) return;
 
             Running = false;
-            kernelSession.Stop();
+
+            try
+            {
+                kernelSession.Stop();
+            }
+            catch (Exception)
+            {
+            }
         }
 
         /// <summary>

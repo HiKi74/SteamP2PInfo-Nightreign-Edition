@@ -61,6 +61,20 @@ namespace SteamP2PInfo.Config
         public bool OpenProfileInOverlay { get; set; } = true;
 
         /// <summary>
+        /// If true, the tool attaches by itself as soon as the game window shows up,
+        /// instead of waiting for a click on "ATTACH GAME". Together with closing
+        /// when the game ends this makes the tool hands free for every session.
+        /// </summary>
+        [JsonProperty("auto_attach")]
+        [ConfigBindingElement("自动附加游戏", typeof(ToggleSwitch), "IsOnProperty",
+            Tooltip: "开启后，工具一检测到黑夜君临的游戏窗口就自动附加，不用再手动点“附加游戏”。\n游戏退出时工具会自动关闭并稍后重启，因此每一局都能自动接上。",
+            UIElementProperties: new object[] {
+                new object[] { "OnContent", "开" },
+                new object[] { "OffContent", "关" }
+            })]
+        public bool AutoAttach { get; set; } = true;
+
+        /// <summary>
         /// If true, will dump peer information into a game-specific log file.
         /// </summary>
         [JsonProperty("log_activity")]

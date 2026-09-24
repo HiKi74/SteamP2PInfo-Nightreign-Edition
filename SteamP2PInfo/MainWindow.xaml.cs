@@ -58,6 +58,15 @@ namespace SteamP2PInfo
 
         private readonly bool mRestarted;
 
+        /// <summary>Set while an attach attempt is running, so only one runs at a time.</summary>
+        private bool mAttachInProgress;
+
+        /// <summary>Set when the game window disappeared and the tool is going down.</summary>
+        private volatile bool mExiting;
+
+        private DispatcherTimer autoAttachTimer;
+        private DateTime autoAttachRetryAfter = DateTime.MinValue;
+
         private WindowSelectDialog.WindowInfo wInfo;
 
         public MainWindow()
@@ -102,6 +111,18 @@ namespace SteamP2PInfo
             SteamPaths.EnsureConfigured();
             Closing += MainWindow_Closed;
 
+            // The tool starts unattached and waits for the game, so the Nightreign
+            // config is loaded up front - the automatic attach reads its setting
+            // from there.
+            try
+            {
+                GameConfig.LoadOrCreate(GameConfig.NightreignProcessName);
+            }
+            catch (Exception ex)
+            {
+                LogCrash(ex, "Config");
+            }
+
             peers = new ObservableCollection<SteamPeerBase>();
             dataGridSession.DataContext = peers;
             Title = "Steam P2P Info " + VersionCheck.CurrentVersion + "（黑夜君临）" +
@@ -140,6 +161,9 @@ namespace SteamP2PInfo
                 {
                 }
             });
+
+            // Look for the game window while unattached and attach on its own.
+            StartAutoAttachWatch();
         }
 
         private void Timer_Tick(object o)
@@ -338,6 +362,92 @@ namespace SteamP2PInfo
         }
 
         /// <summary>
+        /// While the tool is unattached it keeps looking for the game window and
+        /// attaches on its own as soon as Nightreign shows up. Together with the
+        /// shutdown when the game ends this makes the tool hands free: start it once
+        /// and every session is covered.
+        /// </summary>
+        private void StartAutoAttachWatch()
+        {
+            autoAttachTimer = new DispatcherTimer();
+            autoAttachTimer.Interval = TimeSpan.FromSeconds(5);
+            autoAttachTimer.Tick += async (sender, args) =>
+            {
+                if (wInfo != null || mAttachInProgress || mExiting)
+                    return;
+
+                if (GameConfig.Current == null || !GameConfig.Current.AutoAttach)
+                    return;
+
+                if (DateTime.UtcNow < autoAttachRetryAfter)
+                    return;
+
+                if (WindowSelectDialog.FindNightreignWindow() == null)
+                    return;
+
+                mAttachInProgress = true;
+                try
+                {
+                    Logger.WriteLine("[ATTACH] game window found, attaching automatically");
+
+                    if (!await AttachToGame(true))
+                        autoAttachRetryAfter = DateTime.UtcNow.AddSeconds(30);
+                }
+                catch (Exception ex)
+                {
+                    LogCrash(ex, "AutoAttach");
+                    autoAttachRetryAfter = DateTime.UtcNow.AddSeconds(30);
+                }
+                finally
+                {
+                    mAttachInProgress = false;
+                }
+            };
+            autoAttachTimer.Start();
+        }
+
+        /// <summary>
+        /// Once attached, a dedicated thread watches the game window. The UI thread
+        /// cannot do that job reliably: Steam calls block for seconds while the game
+        /// shuts down, which froze the window and delayed the shutdown - and the
+        /// shutdown is what clears Steam's "in game" state.
+        /// </summary>
+        private void StartGameExitWatch()
+        {
+            IntPtr gameWindow = wInfo.Handle;
+
+            Thread watch = new Thread(() =>
+            {
+                while (!mExiting)
+                {
+                    Thread.Sleep(500);
+                    if (WinAPI.User32.IsWindow(gameWindow))
+                        continue;
+
+                    mExiting = true;
+                    Logger.WriteLine("[LAUNCH] game window is gone, shutting down");
+
+                    // Do the slow work on this thread: the UI thread may well be
+                    // stuck inside a Steam call at this very moment.
+                    try { ETWPingMonitor.Stop(); } catch (Exception) { }
+                    try { GameConfig.Current?.Save(); } catch (Exception) { }
+
+                    StartNextInstance();
+
+                    try { Dispatcher.BeginInvoke(new Action(Close)); } catch (Exception) { }
+
+                    // Never hang on the way out: Steam only clears "in game" once
+                    // this process is really gone.
+                    Thread.Sleep(3000);
+                    Environment.Exit(0);
+                }
+            });
+            watch.IsBackground = true;
+            watch.Name = "GameExitWatch";
+            watch.Start();
+        }
+
+        /// <summary>
         /// Waits until the instance that started this one (<c>--reopen:&lt;pid&gt;</c>)
         /// has shut down, so the single-instance check does not refuse to start.
         /// </summary>
@@ -389,9 +499,27 @@ namespace SteamP2PInfo
 
         private async void labelGameState_RequestNavigate(object sender, RequestNavigateEventArgs e)
         {
-            if (wInfo != null)
+            if (wInfo != null || mAttachInProgress)
                 return;
 
+            mAttachInProgress = true;
+            try
+            {
+                await AttachToGame(false);
+            }
+            finally
+            {
+                mAttachInProgress = false;
+            }
+        }
+
+        /// <summary>
+        /// Attaches to the Nightreign window. With <paramref name="quiet"/> set it
+        /// never shows a dialog: the automatic attach uses that mode and simply
+        /// tries again later instead of interrupting whatever the user is doing.
+        /// </summary>
+        private async Task<bool> AttachToGame(bool quiet)
+        {
             SteamPaths.EnsureConfigured();
 
             // This build is dedicated to ELDEN RING NIGHTREIGN: look for the game
@@ -399,29 +527,36 @@ namespace SteamP2PInfo
             WindowSelectDialog.WindowInfo selected = WindowSelectDialog.FindNightreignWindow();
             if (selected == null)
             {
-                MessageBox.Show(
-                    "未检测到《艾尔登法环 黑夜君临》的游戏窗口。\n请先启动游戏并进入游戏画面，再点击“附加游戏”。",
-                    "未找到游戏", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
+                if (!quiet)
+                    MessageBox.Show(
+                        "未检测到《艾尔登法环 黑夜君临》的游戏窗口。\n请先启动游戏并进入游戏画面，再点击“附加游戏”。",
+                        "未找到游戏", MessageBoxButton.OK, MessageBoxImage.Information);
+                return false;
             }
 
             GameConfig.LoadOrCreate(selected.ProcessName);
 
             if (!Directory.Exists(System.IO.Path.GetDirectoryName(Settings.Default.SteamLogPath)))
             {
-                MessageBox.Show("找不到 Steam 日志目录，请检查 Steam 是否安装正确。", "目录不存在", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
+                if (!quiet)
+                    MessageBox.Show("找不到 Steam 日志目录，请检查 Steam 是否安装正确。", "目录不存在", MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
             }
 
             // Nightreign's App ID is filled in automatically; keep the prompt as a
             // safety net in case the config is missing it.
             if (GameConfig.Current.SteamAppId == 0)
             {
+                // The automatic attach must not ask questions: a config that lost
+                // its App ID is filled in again on the next load.
+                if (quiet)
+                    return false;
+
                 string input = Microsoft.VisualBasic.Interaction.InputBox("请输入该游戏的 Steam App ID：", "Steam App ID Required");
                 if (!uint.TryParse(input, out uint result))
                 {
                     MessageBox.Show("请输入有效的数字", "输入错误", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return;
+                    return false;
                 }
                 GameConfig.Current.SteamAppId = (int)result;
             }
@@ -448,12 +583,14 @@ namespace SteamP2PInfo
 
             if (!initOk)
             {
-                MessageBox.Show("Steam API 初始化失败，请确认 Steam 已登录且游戏正在运行。", "Steam API Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                if (!quiet)
+                    MessageBox.Show("Steam API 初始化失败，请确认 Steam 已登录且游戏正在运行。", "Steam API Error", MessageBoxButton.OK, MessageBoxImage.Error);
+
                 GameConfig.Current.SteamAppId = 0;
                 GameConfig.Current.Save();
                 textGameState.Text = "附加游戏";
                 textGameState.Foreground = Brushes.Orange;
-                return;
+                return false;
             }
 
             wInfo = selected;
@@ -473,7 +610,7 @@ namespace SteamP2PInfo
                 overlay.Close();
                 MessageBox.Show("悬浮窗消息钩子设置失败", "WINAPI Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 Close();
-                return;
+                return false;
             }
 
             textGameState.Text = wInfo.Title;
@@ -483,6 +620,8 @@ namespace SteamP2PInfo
             ConfigTab.Children.Add(configEditor);
 
             timer.Change(0, 1000);
+            StartGameExitWatch();
+            return true;
         }
 
         private bool MustEnterSteamCommand()
