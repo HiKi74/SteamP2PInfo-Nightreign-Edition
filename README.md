@@ -3,6 +3,12 @@
 《艾尔登法环 黑夜君临》专用的 Steam P2P 联机信息查看工具 / A Steam P2P
 connection viewer dedicated to *ELDEN RING NIGHTREIGN*.
 
+> **本仓库只提供中文版**：界面、配置文件与使用说明均为中文，不再附带英文构建
+> （V1.0.2 时代的英文包只留在 Release 里，源码与后续版本都不再维护）。
+> **This repository ships the Chinese build only** - UI, config and docs are in
+> Chinese; there is no English build. The older English zip stays in the V1.0.2
+> release for reference and is not maintained.
+
 实时显示联机玩家的昵称、SteamID、**游玩时长**、Ping 与连接质量，带可自定义
 悬浮窗。 / Shows each online player's name, SteamID, **playtime**, ping and
 connection quality, with a customizable in-game overlay.
