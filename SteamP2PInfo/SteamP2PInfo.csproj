@@ -12,6 +12,7 @@
     <OutputType>WinExe</OutputType>
     <RootNamespace>SteamP2PInfo</RootNamespace>
     <AssemblyName>SteamP2PInfo</AssemblyName>
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <ProjectTypeGuids>{60dc8134-eba5-43b8-bcc9-bb4bc16c2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
@@ -363,6 +364,7 @@
   </ItemGroup>
   <ItemGroup>
     <Resource Include="FodyWeavers.xml" />
+    <Resource Include="app.ico" />
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include=".NETFramework,Version=v4.8">
