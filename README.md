@@ -36,9 +36,9 @@ connection quality, with a customizable in-game overlay.
   Lookups are done once and kept; empty results retry every 2 min, and a newly
   matched player invalidates the cached results for the whole lobby
 - 游戏退出后工具自动退出并重启一个新实例：退出才能让 Steam 解除“游戏中”，
-  重启则省去手动再开一次
+  重启则省去手动再开一次（延迟约 10 秒，期间工具进程不存在）
   When the game exits the tool exits too (that is what clears Steam's "in game"
-  state) and immediately starts a fresh instance for the next match
+  state) and starts a fresh instance ~10 s later, so Steam gets a clean gap
 
 ## 截图 / Screenshots
 

@@ -45,6 +45,14 @@ namespace SteamP2PInfo
         /// <summary>Marks the instance that is started automatically after a match.</summary>
         private const string REOPEN_ARG = "--reopen";
 
+        /// <summary>
+        /// Seconds to wait before the replacement instance is started. Steam only
+        /// drops the "in game" state once nothing of the game (or of this tool) is
+        /// running, so the new instance is deliberately not started in the same
+        /// breath as the old one exits.
+        /// </summary>
+        private const int RESTART_DELAY_SECONDS = 10;
+
         /// <summary>Guards against starting more than one replacement instance.</summary>
         private static bool mRestartStarted;
 
@@ -304,14 +312,22 @@ namespace SteamP2PInfo
 
             try
             {
-                Logger.WriteLine("[LAUNCH] game window is gone, restarting the tool for the next match");
+                Logger.WriteLine("[LAUNCH] game window is gone, restarting the tool in " +
+                    RESTART_DELAY_SECONDS + "s");
 
-                int processId = Process.GetCurrentProcess().Id;
+                string executable = Process.GetCurrentProcess().MainModule.FileName;
+
+                // The wait is done by a hidden shell that outlives this process, so
+                // that nothing of the tool is running while Steam clears its state.
+                // ("ping" is used as the delay because "timeout" needs a console.)
                 Process.Start(new ProcessStartInfo
                 {
-                    FileName = Process.GetCurrentProcess().MainModule.FileName,
-                    Arguments = REOPEN_ARG + ":" + processId,
-                    UseShellExecute = true,
+                    FileName = "cmd.exe",
+                    Arguments = "/c ping -n " + (RESTART_DELAY_SECONDS + 1) + " 127.0.0.1 >nul & " +
+                        "start \"\" \"" + executable + "\" " + REOPEN_ARG + ":" + Process.GetCurrentProcess().Id,
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    WindowStyle = ProcessWindowStyle.Hidden,
                     WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory
                 });
             }
