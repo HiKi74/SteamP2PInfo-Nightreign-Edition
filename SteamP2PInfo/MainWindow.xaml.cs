@@ -42,10 +42,23 @@ namespace SteamP2PInfo
         private const string STEAM_COMMAND = "log_ipc \"" + STEAM_IPC_FILTER + "\"";
         private const string IPC_LOGGING_MARKER = "Started IPC logging for BeginAuthSession,EndAuthSession,LeaveLobby,SendClanChatMessage.";
 
+        /// <summary>Marks the instance that is started automatically after a match.</summary>
+        private const string REOPEN_ARG = "--reopen";
+
+        private readonly bool mRestarted;
+
         private WindowSelectDialog.WindowInfo wInfo;
 
         public MainWindow()
         {
+            mRestarted = Environment.GetCommandLineArgs()
+                .Any(a => string.Equals(a, REOPEN_ARG, StringComparison.OrdinalIgnoreCase));
+
+            // The restarted instance is created while the old one is still
+            // shutting down, so give it a moment before the single-instance check.
+            if (mRestarted)
+                WaitForPreviousInstance(TimeSpan.FromSeconds(15));
+
             if (Process.GetProcessesByName("SteamP2PInfo").Length > 1)
             {
                 MessageBox.Show("Steam P2P Info 已有一个实例在运行，不能同时打开两个。", "程序已在运行", MessageBoxButton.OK, MessageBoxImage.Stop);
@@ -69,7 +82,8 @@ namespace SteamP2PInfo
 
             peers = new ObservableCollection<SteamPeerBase>();
             dataGridSession.DataContext = peers;
-            Title = "Steam P2P Info " + VersionCheck.CurrentVersion + "（黑夜君临）";
+            Title = "Steam P2P Info " + VersionCheck.CurrentVersion + "（黑夜君临）" +
+                (mRestarted ? " · 已自动重启，等待附加游戏" : "");
 
             timer = new Timer(Timer_Tick, null, Timeout.Infinite, Timeout.Infinite);
             Settings.Default.PropertyChanged += (s, e) => Settings.Default.Save();
@@ -113,7 +127,11 @@ namespace SteamP2PInfo
                 // Necessary to close the program after the game exits, as SteamAPI_Shutdown isn't
                 // sufficient to have steam recognize the game is no longer running
                 if (!WinAPI.User32.IsWindow(wInfo.Handle))
+                {
+                    StartNextInstance();
                     Close();
+                    return;
+                }
 
                 if (HotkeyManager.Enabled && !GameConfig.Current.HotkeysEnabled)
                     HotkeyManager.Disable();
@@ -249,6 +267,45 @@ namespace SteamP2PInfo
             if (overlay != null) overlay.Close();
             HotkeyManager.Disable();
             ETWPingMonitor.Stop();
+        }
+
+        /// <summary>
+        /// Steam counts this tool as the game process, so the "in game" state only
+        /// goes away once the tool exits (SteamAPI_Shutdown is not enough). To save
+        /// the user from starting it again by hand, a fresh instance is started
+        /// right before closing: it only talks to Steam after "ATTACH GAME" is
+        /// clicked, so it does not put the "in game" state back, and it is already
+        /// waiting for the next match.
+        /// </summary>
+        private void StartNextInstance()
+        {
+            try
+            {
+                Logger.WriteLine("[LAUNCH] game window is gone, restarting the tool for the next match");
+
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = Process.GetCurrentProcess().MainModule.FileName,
+                    Arguments = REOPEN_ARG,
+                    UseShellExecute = true,
+                    WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory
+                });
+            }
+            catch (Exception ex)
+            {
+                LogCrash(ex, "Restart");
+            }
+        }
+
+        /// <summary>
+        /// Waits until the instance that started this one has shut down, so the
+        /// single-instance check does not refuse to start.
+        /// </summary>
+        private static void WaitForPreviousInstance(TimeSpan timeout)
+        {
+            Stopwatch watch = Stopwatch.StartNew();
+            while (watch.Elapsed < timeout && Process.GetProcessesByName("SteamP2PInfo").Length > 1)
+                Thread.Sleep(200);
         }
 
 

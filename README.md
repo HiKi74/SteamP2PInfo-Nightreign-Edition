@@ -35,6 +35,10 @@ connection quality, with a customizable in-game overlay.
   （新的一局）时清空缓存重新查询
   Lookups are done once and kept; empty results retry every 2 min, and a newly
   matched player invalidates the cached results for the whole lobby
+- 游戏退出后工具自动退出并重启一个新实例：退出才能让 Steam 解除“游戏中”，
+  重启则省去手动再开一次
+  When the game exits the tool exits too (that is what clears Steam's "in game"
+  state) and immediately starts a fresh instance for the next match
 
 ## 截图 / Screenshots
 
@@ -61,6 +65,12 @@ connection quality, with a customizable in-game overlay.
   好友；“私密”= 双方好友列表都隐藏，无法判断（不会误报）；“查询中”= 正在读取。
   Relation states? 好友 = mutual Steam friends; 野排 = proven not friends;
   私密 = both lists hidden, so the tool refuses to guess; 查询中 = lookup running.
+- 关掉游戏后 Steam 还显示“游戏中”？工具也被 Steam 算作游戏进程，所以它必须一起
+  退出，Steam 才会解除该状态；退出前工具会自动启动一个新实例（标题栏显示
+  “已自动重启，等待附加游戏”），下一局点“附加游戏”即可。手动关掉窗口不会再重启。
+  Steam still shows "in game"? The tool counts as a game process too, so it has to
+  exit for Steam to clear that; it starts a fresh instance right away for the next
+  match. Closing the window by hand does not restart it.
 - 全屏独占不显示悬浮窗：悬浮窗仅支持窗口化 / 无边框。
   Overlay works only in windowed / borderless mode.
 
