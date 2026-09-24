@@ -1,4 +1,5 @@
 ﻿<mah:MetroWindow Icon="app.ico"
+        ShowIconOnTitleBar="False"
         x:Class="SteamP2PInfo.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
