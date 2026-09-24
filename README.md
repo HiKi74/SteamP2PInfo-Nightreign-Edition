@@ -41,10 +41,13 @@ connection quality, with a customizable in-game overlay.
   （新的一局）时清空缓存重新查询
   Lookups are done once and kept; empty results retry every 2 min, and a newly
   matched player invalidates the cached results for the whole lobby
-- 游戏退出时工具立即关闭（独立线程 0.5 秒检测、3 秒硬上限强制退出），不会自动重启；
-  下一局重新打开工具即可，配合“自动附加游戏”依旧无需手动点附加
-  The tool exits as soon as the game window is gone (own thread, 0.5 s polling, hard
-  3 s limit) and does not restart itself; reopening it is enough, it attaches by itself
+- 游戏退出时工具立即关闭：独立线程每 0.5 秒查一次游戏窗口，一旦消失就先把自己的窗口
+  从屏幕上隐藏（不等界面线程，它这时可能正卡在 Steam 调用里），再收尾，最多 1.2 秒后
+  强制结束进程；不会自动重启，下一局重新打开工具即可，配合“自动附加游戏”依旧免手动
+  The tool exits as soon as the game window is gone (own thread, 0.5 s polling). It hides
+  its own windows first - the UI thread may be stuck in a Steam call at that moment - then
+  cleans up and force-exits within 1.2 s at the latest. It does not restart itself; just
+  reopen it and auto attach does the rest.
 
 ## 截图 / Screenshots
 
@@ -80,10 +83,13 @@ connection quality, with a customizable in-game overlay.
   on its own schedule (4 min 39 s in one test), so the state can linger after both
   the game and the tool are gone; without the tool it recovers in ~10 s. Automatic
   restart is off by default to keep that phase unambiguous.
-- 游戏退出后工具会卡一下？Steam 接口在游戏关闭瞬间会阻塞界面线程，V1.0.3 改为独立
-  线程监测游戏窗口并负责退出（0.5 秒一次，最多等 3 秒后强制结束进程）。
-  Tool freezes on game exit? Steam calls block the UI thread right when the game
-  shuts down; V1.0.3 watches the window on its own thread instead.
+- 游戏退出后工具会卡一下？Steam 接口在游戏关闭瞬间会阻塞界面线程。现在监测线程察觉
+  游戏窗口消失后，第一时间就把主窗口与悬浮窗隐藏掉（不等界面线程），所以不会再看到
+  冻住的窗口；随后最多 1.2 秒内强制结束进程（日志会写 “UI thread did not finish
+  within N ms, forcing exit”）。
+  Tool freezes on game exit? Steam calls block the UI thread right when the game shuts
+  down, so the exit watchdog hides the tool's windows itself as soon as the game window is
+  gone (without waiting for the UI thread) and force-exits within 1.2 s.
 - 全屏独占不显示悬浮窗：悬浮窗仅支持窗口化 / 无边框。
   Overlay works only in windowed / borderless mode.
 
