@@ -40,10 +40,10 @@ connection quality, with a customizable in-game overlay.
   Lookups are done once and kept; empty results retry every 2 min, and a newly
   matched player invalidates the cached results for the whole lobby
 - 游戏退出后工具自动退出并重启一个新实例：退出才能让 Steam 解除“游戏中”，
-- 游戏退出时工具立即关闭（独立线程 0.5 秒检测、3 秒硬上限强制退出）；默认不自动
-  重启，下一局重新打开工具即可，配合“自动附加游戏”依旧无需手动点附加
+- 游戏退出时工具立即关闭（独立线程 0.5 秒检测、3 秒硬上限强制退出），不会自动重启；
+  下一局重新打开工具即可，配合“自动附加游戏”依旧无需手动点附加
   The tool exits as soon as the game window is gone (own thread, 0.5 s polling, hard
-  3 s limit); automatic restart is off by default
+  3 s limit) and does not restart itself; reopening it is enough, it attaches by itself
 
 ## 截图 / Screenshots
 
@@ -71,8 +71,9 @@ connection quality, with a customizable in-game overlay.
   Relation states? 好友 = mutual Steam friends; 野排 = proven not friends;
   私密 = both lists hidden, so the tool refuses to guess; 查询中 = lookup running.
 - 关掉游戏后 Steam 还显示“游戏中”？工具也被 Steam 算作游戏进程，所以它必须一起
-  退出，Steam 才会解除该状态；退出前工具会自动启动一个新实例（标题栏显示
-  “已自动重启，等待附加游戏”），下一局点“附加游戏”即可。手动关掉窗口不会再重启。
+  退出，Steam 才会解除该状态。实测 Steam 只会在自己的清理周期里删掉工具的进程
+  记录（一次实测为 4 分 39 秒），所以游戏和工具都退出后状态仍可能残留一会儿；
+  对照组（不开工具）约 10 秒即恢复。工具不会自动重启，下一局重新打开即可。
   Steam still shows "in game"? The tool counts as a game process too, so it has to
   exit for Steam to clear that. Measured: Steam only drops the tool's process record
   on its own schedule (4 min 39 s in one test), so the state can linger after both

@@ -42,22 +42,6 @@ namespace SteamP2PInfo
         private const string STEAM_COMMAND = "log_ipc \"" + STEAM_IPC_FILTER + "\"";
         private const string IPC_LOGGING_MARKER = "Started IPC logging for BeginAuthSession,EndAuthSession,LeaveLobby,SendClanChatMessage.";
 
-        /// <summary>Marks the instance that is started automatically after a match.</summary>
-        private const string REOPEN_ARG = "--reopen";
-
-        /// <summary>
-        /// Seconds to wait before the replacement instance is started. Steam only
-        /// drops the "in game" state once nothing of the game (or of this tool) is
-        /// running, so the new instance is deliberately not started in the same
-        /// breath as the old one exits.
-        /// </summary>
-        private const int RESTART_DELAY_SECONDS = 10;
-
-        /// <summary>Guards against starting more than one replacement instance.</summary>
-        private static bool mRestartStarted;
-
-        private readonly bool mRestarted;
-
         /// <summary>Set while an attach attempt is running, so only one runs at a time.</summary>
         private bool mAttachInProgress;
 
@@ -71,27 +55,8 @@ namespace SteamP2PInfo
 
         public MainWindow()
         {
-            string[] commandLine = Environment.GetCommandLineArgs();
-            mRestarted = commandLine.Any(a =>
-                string.Equals(a, REOPEN_ARG, StringComparison.OrdinalIgnoreCase) ||
-                a.StartsWith(REOPEN_ARG + ":", StringComparison.OrdinalIgnoreCase));
-
-            // The restarted instance is created while the old one is still shutting
-            // down, so wait for it before running the single-instance check below.
-            if (mRestarted)
-                WaitForPreviousInstance(commandLine);
-
             if (Process.GetProcessesByName("SteamP2PInfo").Length > 1)
             {
-                if (mRestarted)
-                {
-                    // A restarted copy must never nag the user with a dialog: if
-                    // another instance is still running, that is the one on screen.
-                    Logger.WriteLine("[LAUNCH] another instance is already running, this restarted copy exits");
-                    Close();
-                    return;
-                }
-
                 MessageBox.Show("Steam P2P Info 已有一个实例在运行，不能同时打开两个。", "程序已在运行", MessageBoxButton.OK, MessageBoxImage.Stop);
                 Close();
                 return;
@@ -125,8 +90,7 @@ namespace SteamP2PInfo
 
             peers = new ObservableCollection<SteamPeerBase>();
             dataGridSession.DataContext = peers;
-            Title = "Steam P2P Info " + VersionCheck.CurrentVersion + "（黑夜君临）" +
-                (mRestarted ? " · 已自动重启，等待附加游戏" : "");
+            Title = "Steam P2P Info " + VersionCheck.CurrentVersion + "（黑夜君临）";
 
             timer = new Timer(Timer_Tick, null, Timeout.Infinite, Timeout.Infinite);
             Settings.Default.PropertyChanged += (s, e) => Settings.Default.Save();
@@ -174,11 +138,9 @@ namespace SteamP2PInfo
                 // sufficient to have steam recognize the game is no longer running
                 if (!WinAPI.User32.IsWindow(wInfo.Handle))
                 {
-                    // Shutting down takes a moment and this timer keeps ticking once
-                    // per second, so stop it first: otherwise every tick would start
-                    // yet another replacement instance.
+                    // Shutting down takes a moment while this timer keeps ticking once
+                    // per second, so stop it first.
                     timer.Change(Timeout.Infinite, Timeout.Infinite);
-                    StartNextInstance();
                     Close();
                     return;
                 }
@@ -320,57 +282,6 @@ namespace SteamP2PInfo
         }
 
         /// <summary>
-        /// Steam counts this tool as the game process, so the "in game" state only
-        /// goes away once the tool exits (SteamAPI_Shutdown is not enough). To save
-        /// the user from starting it again by hand, a fresh instance is started
-        /// right before closing: it only talks to Steam after "ATTACH GAME" is
-        /// clicked, so it does not put the "in game" state back, and it is already
-        /// waiting for the next match.
-        /// </summary>
-        private void StartNextInstance()
-        {
-            if (mRestartStarted)
-                return;
-
-            mRestartStarted = true;
-
-            // Restarting is off by default: the replacement would only be useful
-            // because Steam counts the tool as a game process, and Steam drops that
-            // record on its own schedule anyway. The config tab can turn it back on.
-            if (GameConfig.Current == null || !GameConfig.Current.AutoRestart)
-            {
-                Logger.WriteLine("[LAUNCH] not restarting (自动重启 is off)");
-                return;
-            }
-
-            try
-            {
-                Logger.WriteLine("[LAUNCH] game window is gone, restarting the tool in " +
-                    RESTART_DELAY_SECONDS + "s");
-
-                string executable = Process.GetCurrentProcess().MainModule.FileName;
-
-                // The wait is done by a hidden shell that outlives this process, so
-                // that nothing of the tool is running while Steam clears its state.
-                // ("ping" is used as the delay because "timeout" needs a console.)
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "cmd.exe",
-                    Arguments = "/c ping -n " + (RESTART_DELAY_SECONDS + 1) + " 127.0.0.1 >nul & " +
-                        "start \"\" \"" + executable + "\" " + REOPEN_ARG + ":" + Process.GetCurrentProcess().Id,
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory
-                });
-            }
-            catch (Exception ex)
-            {
-                LogCrash(ex, "Restart");
-            }
-        }
-
-        /// <summary>
         /// While the tool is unattached it keeps looking for the game window and
         /// attaches on its own as soon as Nightreign shows up. Together with the
         /// shutdown when the game ends this makes the tool hands free: start it once
@@ -441,8 +352,6 @@ namespace SteamP2PInfo
                     try { ETWPingMonitor.Stop(); } catch (Exception) { }
                     try { GameConfig.Current?.Save(); } catch (Exception) { }
 
-                    StartNextInstance();
-
                     try { Dispatcher.BeginInvoke(new Action(Close)); } catch (Exception) { }
 
                     // Never hang on the way out: Steam only clears "in game" once
@@ -454,44 +363,6 @@ namespace SteamP2PInfo
             watch.IsBackground = true;
             watch.Name = "GameExitWatch";
             watch.Start();
-        }
-
-        /// <summary>
-        /// Waits until the instance that started this one (<c>--reopen:&lt;pid&gt;</c>)
-        /// has shut down, so the single-instance check does not refuse to start.
-        /// </summary>
-        private static void WaitForPreviousInstance(string[] commandLine)
-        {
-            int callerId = 0;
-            foreach (string arg in commandLine)
-            {
-                if (arg.StartsWith(REOPEN_ARG + ":", StringComparison.OrdinalIgnoreCase))
-                    int.TryParse(arg.Substring(REOPEN_ARG.Length + 1), out callerId);
-            }
-
-            if (callerId != 0)
-            {
-                try
-                {
-                    using (Process caller = Process.GetProcessById(callerId))
-                    {
-                        // Guard against a recycled process id: only wait when it still
-                        // is a copy of this tool.
-                        if (string.Equals(caller.ProcessName, "SteamP2PInfo", StringComparison.OrdinalIgnoreCase))
-                            caller.WaitForExit(30000);
-                    }
-                }
-                catch (Exception)
-                {
-                    // Already gone: nothing left to wait for.
-                }
-            }
-
-            // Safety net for a sibling that lost the race before the timer was
-            // stopped in older builds, and for a caller id we could not read.
-            Stopwatch watch = Stopwatch.StartNew();
-            while (watch.Elapsed < TimeSpan.FromSeconds(10) && Process.GetProcessesByName("SteamP2PInfo").Length > 1)
-                Thread.Sleep(200);
         }
 
 
