@@ -40,9 +40,10 @@ connection quality, with a customizable in-game overlay.
   Lookups are done once and kept; empty results retry every 2 min, and a newly
   matched player invalidates the cached results for the whole lobby
 - 游戏退出后工具自动退出并重启一个新实例：退出才能让 Steam 解除“游戏中”，
-  重启则省去手动再开一次（延迟约 10 秒，期间工具进程不存在）
-  When the game exits the tool exits too (that is what clears Steam's "in game"
-  state) and starts a fresh instance ~10 s later, so Steam gets a clean gap
+- 游戏退出时工具立即关闭（独立线程 0.5 秒检测、3 秒硬上限强制退出）；默认不自动
+  重启，下一局重新打开工具即可，配合“自动附加游戏”依旧无需手动点附加
+  The tool exits as soon as the game window is gone (own thread, 0.5 s polling, hard
+  3 s limit); automatic restart is off by default
 
 ## 截图 / Screenshots
 
@@ -73,8 +74,10 @@ connection quality, with a customizable in-game overlay.
   退出，Steam 才会解除该状态；退出前工具会自动启动一个新实例（标题栏显示
   “已自动重启，等待附加游戏”），下一局点“附加游戏”即可。手动关掉窗口不会再重启。
   Steam still shows "in game"? The tool counts as a game process too, so it has to
-  exit for Steam to clear that; it starts a fresh instance right away for the next
-  match. Closing the window by hand does not restart it.
+  exit for Steam to clear that. Measured: Steam only drops the tool's process record
+  on its own schedule (4 min 39 s in one test), so the state can linger after both
+  the game and the tool are gone; without the tool it recovers in ~10 s. Automatic
+  restart is off by default to keep that phase unambiguous.
 - 游戏退出后工具会卡一下？Steam 接口在游戏关闭瞬间会阻塞界面线程，V1.0.3 改为独立
   线程监测游戏窗口并负责退出（0.5 秒一次，最多等 3 秒后强制结束进程）。
   Tool freezes on game exit? Steam calls block the UI thread right when the game

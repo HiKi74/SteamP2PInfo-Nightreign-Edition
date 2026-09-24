@@ -75,6 +75,21 @@ namespace SteamP2PInfo.Config
         public bool AutoAttach { get; set; } = true;
 
         /// <summary>
+        /// If true, the tool starts a fresh instance after the game exits. Off by
+        /// default: Steam keeps counting the tool as a game process and only drops
+        /// that record on its own schedule, so a replacement instance is best left
+        /// to the user for now.
+        /// </summary>
+        [JsonProperty("auto_restart")]
+        [ConfigBindingElement("游戏退出后自动重启", typeof(ToggleSwitch), "IsOnProperty",
+            Tooltip: "开启后，游戏退出、工具随之关闭时会延迟约 10 秒自动再启动一个实例等待下一局。\n默认关闭：靠“自动附加游戏”即可，游戏启动后工具会自动附加。",
+            UIElementProperties: new object[] {
+                new object[] { "OnContent", "开" },
+                new object[] { "OffContent", "关" }
+            })]
+        public bool AutoRestart { get; set; } = false;
+
+        /// <summary>
         /// If true, will dump peer information into a game-specific log file.
         /// </summary>
         [JsonProperty("log_activity")]

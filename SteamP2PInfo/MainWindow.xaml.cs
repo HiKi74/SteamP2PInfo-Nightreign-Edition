@@ -334,6 +334,15 @@ namespace SteamP2PInfo
 
             mRestartStarted = true;
 
+            // Restarting is off by default: the replacement would only be useful
+            // because Steam counts the tool as a game process, and Steam drops that
+            // record on its own schedule anyway. The config tab can turn it back on.
+            if (GameConfig.Current == null || !GameConfig.Current.AutoRestart)
+            {
+                Logger.WriteLine("[LAUNCH] not restarting (自动重启 is off)");
+                return;
+            }
+
             try
             {
                 Logger.WriteLine("[LAUNCH] game window is gone, restarting the tool in " +
@@ -620,6 +629,10 @@ namespace SteamP2PInfo
             ConfigTab.Children.Add(configEditor);
 
             timer.Change(0, 1000);
+
+            Logger.WriteLine("[ATTACH] attached to \"" + wInfo.Title + "\" (pid " + wInfo.ProcessId +
+                "), watching the window for the exit");
+
             StartGameExitWatch();
             return true;
         }
