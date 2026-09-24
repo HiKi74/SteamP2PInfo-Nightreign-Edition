@@ -19,17 +19,19 @@ connection quality, with a customizable in-game overlay.
 
 - 自动识别并附加游戏窗口（Steam AppID 2622380），无需选窗口 / 填 AppID
   Auto-detect & attach to the game window (AppID 2622380)
-- 自动附加：启动后常驻后台，检测到游戏窗口即自动附加；游戏退出后自动退出并稍后
-  重启待命，多局无需手动操作（配置页可关闭）
+- 自动附加：启动后常驻后台，检测到游戏窗口即自动附加，不用手动点“附加游戏”
+  （配置页可关闭）；游戏退出时工具自动关闭，下一局重新打开即可再次自动附加
   Auto attach: it watches for the game window and attaches by itself, so nothing has
-  to be clicked between matches (can be turned off in the config tab)
+  to be clicked (can be turned off in the config tab)
 - 自动静默开启 Steam IPC 日志（`steam.exe +log_ipc`），Steam 重启后自动重新开启
   Silently enables Steam IPC logging; re-enabled automatically after restarts
 - 附加时回溯日志，找回已连上的玩家 / Backfills players connected before attach
-- 游玩时长列（会话信息 + 悬浮窗）：公开资料显示小时数，私密显示“未公开”
-  Playtime column: shows hours when public, "Private" / “未公开” otherwise
+- 游玩时长列（会话信息 + 悬浮窗）：依次尝试 Steam Web API → 个人资料“游戏”页 →
+  “最喜爱的游戏”展柜，读不到时显示“未公开”，网络异常显示“—”
+  Playtime column: tries the Web API, the profile's games page and its favourite-game
+  showcase, in that order
 - 固定列宽悬浮窗，信息始终对齐 / Fixed-width overlay columns, always aligned
-- 全中文 / 全英文双版本 / Fully Chinese & English builds
+- 全中文界面（含悬浮窗、配置页与使用说明） / Chinese UI throughout
 - 可选 Steam Web API Key，更稳定获取游玩时长 / Optional Web API key support
 - 好友关系列：好友 / 野排 / 私密 / 查询中。不需要 API Key：未填写时自动读取对方
   公开的社区好友页
@@ -39,7 +41,6 @@ connection quality, with a customizable in-game overlay.
   （新的一局）时清空缓存重新查询
   Lookups are done once and kept; empty results retry every 2 min, and a newly
   matched player invalidates the cached results for the whole lobby
-- 游戏退出后工具自动退出并重启一个新实例：退出才能让 Steam 解除“游戏中”，
 - 游戏退出时工具立即关闭（独立线程 0.5 秒检测、3 秒硬上限强制退出），不会自动重启；
   下一局重新打开工具即可，配合“自动附加游戏”依旧无需手动点附加
   The tool exits as soon as the game window is gone (own thread, 0.5 s polling, hard
