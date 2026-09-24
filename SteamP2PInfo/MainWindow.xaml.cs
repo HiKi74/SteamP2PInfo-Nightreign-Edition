@@ -48,14 +48,27 @@ namespace SteamP2PInfo
         /// <summary>Set when the game window disappeared and the tool is going down.</summary>
         private volatile bool mExiting;
 
-        /// <summary>Set by the window's own shutdown once its cleanup finished.</summary>
-        private volatile bool mClosed;
+        /// <summary>
+        /// How often the exit watchdog looks at the game window. Deliberately short:
+        /// this interval is part of the delay the user sees on screen, and checking a
+        /// window handle costs nothing (it never talks to the game or to Steam).
+        /// </summary>
+        private const int GAME_WINDOW_POLL_MS = 200;
 
         /// <summary>
-        /// Hard cap for the exit watchdog. Our windows are already hidden when it
-        /// runs out, so this only bounds how long an invisible process may linger.
+        /// Last resort of the exit path: if saving or the ETW stop never returns, the
+        /// process still goes away instead of leaving a dead window on screen.
         /// </summary>
-        private const int EXIT_HARD_CAP_MS = 1200;
+        private const int EXIT_REAPER_MS = 2000;
+
+        /// <summary>
+        /// Set by whoever notices the exit first (the periodic timer or the watchdog)
+        /// to wake the watchdog immediately instead of waiting for its next poll.
+        /// </summary>
+        private readonly ManualResetEventSlim mExitSignal = new ManualResetEventSlim(false);
+
+        /// <summary>Who saw the window disappear first - watchdog or ui-timer.</summary>
+        private volatile string mExitNoticedBy = "watchdog";
 
         private DispatcherTimer autoAttachTimer;
         private DateTime autoAttachRetryAfter = DateTime.MinValue;
@@ -147,10 +160,12 @@ namespace SteamP2PInfo
                 // sufficient to have steam recognize the game is no longer running
                 if (!WinAPI.User32.IsWindow(wInfo.Handle))
                 {
-                    // Shutting down takes a moment while this timer keeps ticking once
-                    // per second, so stop it first.
-                    timer.Change(Timeout.Infinite, Timeout.Infinite);
-                    Close();
+                    // Hand the exit to the watchdog instead of closing from here. This
+                    // thread can be stuck inside a Steam call for seconds right now, and
+                    // anything queued behind it - including Close() - would leave the
+                    // frozen window on screen for that whole time.
+                    mExitNoticedBy = "ui-timer";
+                    mExitSignal.Set();
                     return;
                 }
 
@@ -288,8 +303,6 @@ namespace SteamP2PInfo
             if (overlay != null) overlay.Close();
             HotkeyManager.Disable();
             ETWPingMonitor.Stop();
-            // Tells the exit watchdog that it can stop waiting for us.
-            mClosed = true;
         }
 
         /// <summary>
@@ -338,58 +351,64 @@ namespace SteamP2PInfo
         }
 
         /// <summary>
-        /// Once attached, a dedicated thread watches the game window. The UI thread
-        /// cannot do that job reliably: Steam calls block for seconds while the game
-        /// shuts down, which is what the user sees as "the tool hung on exit".
-        /// So this thread takes our windows off the screen first (ShowWindow works
-        /// from any thread, unlike anything WPF), then does the slow cleanup itself.
+        /// Once attached, a dedicated thread watches the game window and, when the game
+        /// is gone, saves what matters and ends the process.
+        ///
+        /// Nothing on the way out may depend on the UI thread. Steam calls block that
+        /// thread for seconds while the game shuts down, and neither ShowWindow nor
+        /// Close() can be used from here then: both wait for the owning thread to pump
+        /// its messages (measured: a cross-thread ShowWindow waited 4.6 s while the
+        /// pump was blocked), so the window would sit there looking frozen - which is
+        /// exactly the complaint. Ending the process removes our windows instantly.
         /// </summary>
         private void StartGameExitWatch()
         {
             IntPtr gameWindow = wInfo.Handle;
-            IntPtr mainWindow = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-            IntPtr overlayWindow = overlay != null
-                ? new System.Windows.Interop.WindowInteropHelper(overlay).Handle
-                : IntPtr.Zero;
 
             Thread watch = new Thread(() =>
             {
+                Stopwatch clock = Stopwatch.StartNew();
+                long lastAlive = 0;
+
                 while (!mExiting)
                 {
-                    Thread.Sleep(500);
+                    // Woken either by the poll interval or by whoever saw the exit first.
+                    mExitSignal.Wait(GAME_WINDOW_POLL_MS);
+                    if (mExiting)
+                        break;
+
                     if (WinAPI.User32.IsWindow(gameWindow))
+                    {
+                        lastAlive = clock.ElapsedMilliseconds;
+                        // Someone may have signalled us while the window is still there:
+                        // drop that so the next wait really waits (never spin).
+                        mExitSignal.Reset();
                         continue;
+                    }
 
                     mExiting = true;
-                    Logger.WriteLine("[LAUNCH] game window is gone, shutting down");
+                    Logger.WriteLine("[LAUNCH] game window is gone (noticed by " + mExitNoticedBy +
+                        ", last seen alive " + (clock.ElapsedMilliseconds - lastAlive) + " ms ago)");
+
+                    // If anything below never returns, the process goes away anyway.
+                    StartExitReaper();
 
                     // No more UI work: another tick could start yet another blocking
-                    // Steam call while we are trying to get out.
+                    // Steam call while we are on our way out.
                     try { timer.Change(Timeout.Infinite, Timeout.Infinite); } catch (Exception) { }
 
-                    // Off the screen right now. If the UI thread is stuck inside a
-                    // Steam call it cannot process our close request for seconds, and
-                    // a frozen window (or overlay) sitting there is the whole problem.
-                    HideWindow(mainWindow);
-                    HideWindow(overlayWindow);
-
-                    // Slow work that must not depend on the UI thread.
-                    try { ETWPingMonitor.Stop(); } catch (Exception) { }
+                    // What must not be lost, and what cleans up system state. All of it
+                    // runs here, never on the UI thread.
+                    long t0 = clock.ElapsedMilliseconds;
                     try { GameConfig.Current?.Save(); } catch (Exception) { }
+                    try { Settings.Default.Save(); } catch (Exception) { }
+                    long saved = clock.ElapsedMilliseconds;
+                    try { ETWPingMonitor.Stop(); } catch (Exception) { }
+                    try { HotkeyManager.Disable(); } catch (Exception) { }
 
-                    // Best effort: let the window run its own cleanup as well.
-                    try { Dispatcher.BeginInvoke(new Action(Close)); } catch (Exception) { }
-
-                    // Leave as soon as that finished - and in any case after the cap.
-                    int waited = 0;
-                    while (!mClosed && waited < EXIT_HARD_CAP_MS)
-                    {
-                        Thread.Sleep(50);
-                        waited += 50;
-                    }
-                    if (!mClosed)
-                        Logger.WriteLine("[LAUNCH] UI thread did not finish within " + waited +
-                            " ms, forcing exit");
+                    Logger.WriteLine("[LAUNCH] leaving after " + clock.ElapsedMilliseconds +
+                        " ms (saves " + (saved - t0) + " ms, etw " + (clock.ElapsedMilliseconds - saved) +
+                        " ms); the windows go away with the process");
                     Environment.Exit(0);
                 }
             });
@@ -399,14 +418,19 @@ namespace SteamP2PInfo
         }
 
         /// <summary>
-        /// Removes one of our windows from the screen. Safe to call from the exit
-        /// watchdog: it only posts to the window's queue, it never touches WPF.
+        /// Backstop for the exit path: whatever happens, the process is gone a couple of
+        /// seconds after the game window disappeared, so no dead window can stay behind.
         /// </summary>
-        private static void HideWindow(IntPtr hwnd)
+        private static void StartExitReaper()
         {
-            if (hwnd == IntPtr.Zero)
-                return;
-            try { WinAPI.User32.ShowWindow(hwnd, WinAPI.User32.SW_HIDE); } catch (Exception) { }
+            Thread reaper = new Thread(() =>
+            {
+                Thread.Sleep(EXIT_REAPER_MS);
+                Environment.Exit(0);
+            });
+            reaper.IsBackground = true;
+            reaper.Name = "GameExitReaper";
+            reaper.Start();
         }
 
 

@@ -41,13 +41,13 @@ connection quality, with a customizable in-game overlay.
   （新的一局）时清空缓存重新查询
   Lookups are done once and kept; empty results retry every 2 min, and a newly
   matched player invalidates the cached results for the whole lobby
-- 游戏退出时工具立即关闭：独立线程每 0.5 秒查一次游戏窗口，一旦消失就先把自己的窗口
-  从屏幕上隐藏（不等界面线程，它这时可能正卡在 Steam 调用里），再收尾，最多 1.2 秒后
-  强制结束进程；不会自动重启，下一局重新打开工具即可，配合“自动附加游戏”依旧免手动
-  The tool exits as soon as the game window is gone (own thread, 0.5 s polling). It hides
-  its own windows first - the UI thread may be stuck in a Steam call at that moment - then
-  cleans up and force-exits within 1.2 s at the latest. It does not restart itself; just
-  reopen it and auto attach does the rest.
+- 游戏退出时工具立即关闭，而且**退出路径完全不碰界面线程**：独立线程每 0.2 秒查一次
+  游戏窗口，窗口消失后就在它自己的线程里保存配置/设置、停掉 ETW，然后结束进程——窗口
+  随进程一起消失，所以不会再出现“先冻住再退”。不会自动重启，下一局重新打开即可
+  The tool exits as soon as the game window is gone, and the exit path never touches the
+  UI thread: a watchdog thread polls every 0.2 s, saves config/settings and stops ETW on
+  its own thread, then ends the process, so the windows disappear with it instead of
+  sitting there frozen. It does not restart itself; reopen it and auto attach does the rest.
 
 ## 截图 / Screenshots
 
@@ -83,13 +83,15 @@ connection quality, with a customizable in-game overlay.
   on its own schedule (4 min 39 s in one test), so the state can linger after both
   the game and the tool are gone; without the tool it recovers in ~10 s. Automatic
   restart is off by default to keep that phase unambiguous.
-- 游戏退出后工具会卡一下？Steam 接口在游戏关闭瞬间会阻塞界面线程。现在监测线程察觉
-  游戏窗口消失后，第一时间就把主窗口与悬浮窗隐藏掉（不等界面线程），所以不会再看到
-  冻住的窗口；随后最多 1.2 秒内强制结束进程（日志会写 “UI thread did not finish
-  within N ms, forcing exit”）。
+- 游戏退出后工具会卡一下？Steam 接口在游戏关闭瞬间会阻塞界面线程，所以退出这条路上
+  一律不等界面线程、也不去隐藏窗口（实测跨线程 ShowWindow 会等界面线程 4.6 秒才返回，
+  隐藏这条路本身就不通）：监测线程存好配置后直接结束进程，窗口随进程消失。
+  日志里每次退出都有两行毫秒级记录，另有 2 秒强制退出兜底。
   Tool freezes on game exit? Steam calls block the UI thread right when the game shuts
-  down, so the exit watchdog hides the tool's windows itself as soon as the game window is
-  gone (without waiting for the UI thread) and force-exits within 1.2 s.
+  down, so the exit path waits for nothing on that thread and does not try to hide windows
+  either (a cross-thread ShowWindow waited 4.6 s in a test). The watchdog saves the config
+  and ends the process; the windows go away with it. Each exit logs two millisecond-stamped
+  lines, with a 2 s force-exit backstop.
 - 全屏独占不显示悬浮窗：悬浮窗仅支持窗口化 / 无边框。
   Overlay works only in windowed / borderless mode.
 
