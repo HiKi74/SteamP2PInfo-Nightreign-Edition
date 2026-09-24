@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Steamworks;
 
@@ -28,8 +29,39 @@ namespace SteamP2PInfo
 
         /// <summary>
         /// Steam persona name of the peer.
+        ///
+        /// Cached on purpose: this used to call SteamFriends.GetFriendPersonaName every
+        /// time the UI rendered a cell, and Steam answers those calls over IPC to the
+        /// Steam client - which stalls for seconds while the game is shutting down.
+        /// The first reader (a worker thread now, see SteamPeerManager) fills the cache,
+        /// everything after that is a plain string read.
         /// </summary>
-        public virtual string Name { get { return SteamFriends.GetFriendPersonaName(SteamID); } }
+        public virtual string Name
+        {
+            get
+            {
+                string cached = mPersonaName;
+                if (cached != null)
+                    return cached;
+
+                string name;
+                try
+                {
+                    name = SteamFriends.GetFriendPersonaName(SteamID);
+                }
+                catch (Exception)
+                {
+                    name = null;
+                }
+                if (string.IsNullOrEmpty(name))
+                    name = SteamID.m_SteamID.ToString();
+
+                Interlocked.CompareExchange(ref mPersonaName, name, null);
+                return mPersonaName;
+            }
+        }
+
+        private string mPersonaName;
 
         /// <summary>
         /// True if the peer is connected via the deprected api, ISteamNetworking.

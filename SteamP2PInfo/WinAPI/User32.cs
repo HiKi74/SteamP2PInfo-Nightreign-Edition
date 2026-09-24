@@ -86,7 +86,13 @@ namespace SteamP2PInfo.WinAPI
         public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
         public static bool SetWindowZOrder(IntPtr hWnd, IntPtr hWndInsertAfter, uint uFlags = 0)
         {
-            return SetWindowPos(hWnd, hWndInsertAfter, 0, 0, 0, 0, 0x03 | uFlags);
+            // 0x0003 = SWP_NOSIZE | SWP_NOMOVE.
+            // 0x4000 = SWP_ASYNCWINDOWPOS: post the request instead of waiting for the
+            // target window's thread. The overlay re-orders itself against the game
+            // window once per tick, and a synchronous SetWindowPos aimed at a game that
+            // has stopped pumping messages (it is shutting down) blocks our UI thread -
+            // another way the window ends up frozen. No effect for our own windows.
+            return SetWindowPos(hWnd, hWndInsertAfter, 0, 0, 0, 0, 0x0003 | 0x4000 | uFlags);
         }
 
         [DllImport("user32.dll", SetLastError = true)]

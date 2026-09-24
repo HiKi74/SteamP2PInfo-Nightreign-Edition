@@ -70,6 +70,19 @@ namespace SteamP2PInfo
         /// <summary>Who saw the window disappear first - watchdog or ui-timer.</summary>
         private volatile string mExitNoticedBy = "watchdog";
 
+        /// <summary>
+        /// Heartbeat of the UI thread, written at the end of every timer tick. The exit
+        /// watchdog reads it to tell the user when the UI thread was stuck (which is
+        /// what "the window froze" looks like from the outside).
+        /// </summary>
+        private volatile int mLastUiTickMs;
+
+        /// <summary>Set while a stall has been reported, so it is logged once.</summary>
+        private bool mStallLogged;
+
+        /// <summary>How long the UI thread may miss ticks before it is reported.</summary>
+        private const int UI_STALL_LOG_MS = 1500;
+
         private DispatcherTimer autoAttachTimer;
         private DateTime autoAttachRetryAfter = DateTime.MinValue;
 
@@ -181,6 +194,8 @@ namespace SteamP2PInfo
                     // Fody generated OnChange seems to break PropertyChanged 
                     // for GameConfig. So do this for now.
                     GameConfig.Current?.Save();
+                    // Reads the IPC log and asks Steam about the peers: runs on a worker
+                    // thread, because those Steam calls stall while the game shuts down.
                     SteamPeerManager.UpdatePeerList();
                 }
 
@@ -217,6 +232,9 @@ namespace SteamP2PInfo
                 // Queue position update after the overlay has re-rendered
                 Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(overlay.UpdatePosition));
                 overlay.UpdateVisibility();
+
+                // Done with this tick: tell the exit watchdog the UI thread is alive.
+                mLastUiTickMs = Environment.TickCount;
             });
         }
 
@@ -369,6 +387,7 @@ namespace SteamP2PInfo
             {
                 Stopwatch clock = Stopwatch.StartNew();
                 long lastAlive = 0;
+                long lastStallLog = 0;
 
                 while (!mExiting)
                 {
@@ -383,6 +402,31 @@ namespace SteamP2PInfo
                         // Someone may have signalled us while the window is still there:
                         // drop that so the next wait really waits (never spin).
                         mExitSignal.Reset();
+
+                        // Watch the UI thread from here. If it stops ticking it is stuck
+                        // inside a Steam call, and that stall is what the user sees as a
+                        // frozen window - so record it instead of guessing later.
+                        int stalled = unchecked(Environment.TickCount - mLastUiTickMs);
+                        if (stalled > UI_STALL_LOG_MS)
+                        {
+                            if (!mStallLogged)
+                            {
+                                Logger.WriteLine("[UI] no timer tick for " + stalled +
+                                    " ms - the UI thread is blocked");
+                                mStallLogged = true;
+                                lastStallLog = clock.ElapsedMilliseconds;
+                            }
+                            else if (clock.ElapsedMilliseconds - lastStallLog >= UI_STALL_LOG_MS)
+                            {
+                                Logger.WriteLine("[UI] still blocked, " + stalled + " ms");
+                                lastStallLog = clock.ElapsedMilliseconds;
+                            }
+                        }
+                        else if (mStallLogged)
+                        {
+                            Logger.WriteLine("[UI] recovered after being blocked for " + stalled + " ms");
+                            mStallLogged = false;
+                        }
                         continue;
                     }
 

@@ -83,15 +83,19 @@ connection quality, with a customizable in-game overlay.
   on its own schedule (4 min 39 s in one test), so the state can linger after both
   the game and the tool are gone; without the tool it recovers in ~10 s. Automatic
   restart is off by default to keep that phase unambiguous.
-- 游戏退出后工具会卡一下？Steam 接口在游戏关闭瞬间会阻塞界面线程，所以退出这条路上
-  一律不等界面线程、也不去隐藏窗口（实测跨线程 ShowWindow 会等界面线程 4.6 秒才返回，
-  隐藏这条路本身就不通）：监测线程存好配置后直接结束进程，窗口随进程消失。
-  日志里每次退出都有两行毫秒级记录，另有 2 秒强制退出兜底。
-  Tool freezes on game exit? Steam calls block the UI thread right when the game shuts
-  down, so the exit path waits for nothing on that thread and does not try to hide windows
-  either (a cross-thread ShowWindow waited 4.6 s in a test). The watchdog saves the config
-  and ends the process; the windows go away with it. Each exit logs two millisecond-stamped
-  lines, with a 2 s force-exit backstop.
+- 游戏退出后工具会卡一下？根因是界面线程自己在调 Steam 接口（昵称每次重绘实时查询、
+  每 6 秒一条刷新日志用的空消息、玩家连接状态查询），以及悬浮窗每秒跨进程重排游戏窗口
+  Z 序（同步 SetWindowPos）。现在这些调用全部挪到后台线程 / 改成 `SWP_ASYNCWINDOWPOS`
+  异步方式，退出按钮也不再依赖界面线程（实测跨线程 ShowWindow 会等界面线程 4.6 秒，
+  隐藏这条路根本不通，已弃用）：监测线程存好配置后结束进程，窗口随进程消失。
+  日志里每次退出有两行毫秒级记录，界面线程卡超过 1.5 秒还会写 `[UI] no timer tick ...`。
+  Tool freezes on game exit? The UI thread was calling into Steam itself (persona names on
+  every repaint, a 6-second dummy IPC message, peer connection state) and the overlay
+  re-ordered the game window once per second with a synchronous cross-process SetWindowPos.
+  All of that moved to worker threads / SWP_ASYNCWINDOWPOS. The exit path needs nothing from
+  the UI thread either (a cross-thread ShowWindow waited 4.6 s in a test, so hiding windows
+  is not an option): the watchdog saves the config and ends the process. Each exit logs two
+  millisecond-stamped lines, plus a `[UI] no timer tick for N ms` probe past 1.5 s.
 - 全屏独占不显示悬浮窗：悬浮窗仅支持窗口化 / 无边框。
   Overlay works only in windowed / borderless mode.
 

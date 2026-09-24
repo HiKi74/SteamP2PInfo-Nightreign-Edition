@@ -9,6 +9,8 @@ using System.Windows;
 using System.Diagnostics;
 using System;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SteamP2PInfo
 {
@@ -21,9 +23,21 @@ namespace SteamP2PInfo
         private static FileStream fs;
         private static StreamReader sr;
         private static FileSystemWatcher fsWatcher;
-        private static bool mustReopenLog = true;
+        private static volatile bool mustReopenLog = true;
         private static long? lastPosInLog = null;
         private static Stopwatch sw = new Stopwatch();
+
+        /// <summary>
+        /// Guards every access to mPeers. Parsing runs on a worker thread now while the
+        /// UI keeps reading the list for its bindings, so the dictionary is shared.
+        /// </summary>
+        private static readonly object mPeersLock = new object();
+
+        /// <summary>
+        /// Set while a parse pass is in flight, so a pass that is waiting for Steam
+        /// cannot be started a second time by the next timer tick.
+        /// </summary>
+        private static int mUpdateRunning;
 
         private static readonly Regex STEAMID3_REGEX = new Regex(@"\[U:1:(?<id>\d+)\]", RegexOptions.Compiled);
         private const long STEAMID64_BASE = 0x0110_0001_0000_0000;
@@ -99,7 +113,35 @@ namespace SteamP2PInfo
             return null;
         }
 
-        public async static void UpdatePeerList()
+        /// <summary>
+        /// Polls the Steam IPC log for peer changes. Everything in here - the dummy IPC
+        /// write, the file reads and the Steam calls that verify the peers - runs on a
+        /// worker thread: while the game shuts down those calls stall for seconds, and on
+        /// the UI thread that stall is exactly the "the tool froze on exit" the user sees.
+        /// </summary>
+        public static void UpdatePeerList()
+        {
+            if (Interlocked.Exchange(ref mUpdateRunning, 1) == 1)
+                return; // the previous pass is still waiting for Steam
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await UpdatePeerListCore().ConfigureAwait(false);
+                }
+                catch (Exception e)
+                {
+                    Logger.WriteLine("[PEER UPDATE ERROR] " + e.Message);
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref mUpdateRunning, 0);
+                }
+            });
+        }
+
+        private static async Task UpdatePeerListCore()
         {
             // Make sure we're constantly writing to the IPC log to force Steam to eventually flush
             // This call was chosen because it's not something a game will call often
@@ -147,7 +189,7 @@ namespace SteamP2PInfo
 
             while (!mustReopenLog)
             {
-                string line = await sr.ReadLineAsync();
+                string line = await sr.ReadLineAsync().ConfigureAwait(false);
                 if (line == null)
                 {
                     lastPosInLog = fs.Position;
@@ -168,11 +210,16 @@ namespace SteamP2PInfo
                 }
                 else if (line.Contains("LeaveLobby"))
                 {
-                    foreach (var sid in mPeers.Keys)
+                    KeyValuePair<CSteamID, SteamPeerInfo>[] leaving;
+                    lock (mPeersLock)
                     {
-                        logDisconnect(mPeers[sid].peer, sid, "Player left Steam lobby");
+                        leaving = mPeers.ToArray();
+                        mPeers.Clear();
                     }
-                    mPeers.Clear();
+                    foreach (var kv in leaving)
+                    {
+                        logDisconnect(kv.Value.peer, kv.Key, "Player left Steam lobby");
+                    }
                     continue;
                 }
                 else continue;
@@ -185,24 +232,40 @@ namespace SteamP2PInfo
                     {
                         if (begin)
                         {
-                            if (!mPeers.TryGetValue(steamID, out SteamPeerInfo peer))
+                            bool known;
+                            lock (mPeersLock)
+                                known = mPeers.ContainsKey(steamID);
+
+                            if (!known)
                             {
+                                // Talks to Steam: must not run while holding the lock.
                                 var newPeerInfo = new SteamPeerInfo(GetPeer(steamID));
                                 if (newPeerInfo.peer is null)
                                 {
                                     Logger.WriteLine($"[PEER CONNECT] Player \"{steamID}\" was detected, but we don't have a P2P connection to them yet");
                                     newPeerInfo.lastDisconnectTimeMS = sw.ElapsedMilliseconds;
                                 }
-                                mPeers.Add(steamID, newPeerInfo);
-                                mSessionRevision++;
+                                lock (mPeersLock)
+                                {
+                                    if (!mPeers.ContainsKey(steamID))
+                                    {
+                                        mPeers.Add(steamID, newPeerInfo);
+                                        mSessionRevision++;
+                                    }
+                                }
                             }
                         }
                         else
                         {
                             // peer just disconnected
-                            if (mPeers.TryGetValue(steamID, out SteamPeerInfo pInfo))
+                            SteamPeerInfo pInfo;
+                            bool removed;
+                            lock (mPeersLock)
                             {
-                                mPeers.Remove(steamID);
+                                removed = mPeers.TryGetValue(steamID, out pInfo) && mPeers.Remove(steamID);
+                            }
+                            if (removed)
+                            {
                                 logDisconnect(pInfo.peer, steamID, "Auth session with peer ended");
                             }
                         }
@@ -215,10 +278,17 @@ namespace SteamP2PInfo
             }
 
             // clean up old peers.
-            foreach (var sid in mPeers.Keys.ToArray())
+            KeyValuePair<CSteamID, SteamPeerInfo>[] current;
+            lock (mPeersLock)
+                current = mPeers.ToArray();
+
+            foreach (var kv in current)
             {
-                var pInfo = mPeers[sid];
-                bool isP2PConnected = false;
+                CSteamID sid = kv.Key;
+                SteamPeerInfo pInfo = kv.Value;
+
+                // GetPeer/UpdatePeerInfo talk to Steam: never call them under the lock.
+                bool isP2PConnected;
                 if (pInfo.peer is null)
                     isP2PConnected = (pInfo.peer = GetPeer(sid)) != null;
                 else
@@ -230,7 +300,8 @@ namespace SteamP2PInfo
 
                 if (!isP2PConnected && sw.ElapsedMilliseconds - pInfo.lastDisconnectTimeMS > PEER_TIMEOUT_MS)
                 {
-                    mPeers.Remove(sid);
+                    lock (mPeersLock)
+                        mPeers.Remove(sid);
                     logDisconnect(pInfo.peer, sid, pInfo.peer is null ? "P2P connection was not established" : "Peer disconnected from P2P session");
                 }
             }
@@ -287,20 +358,35 @@ namespace SteamP2PInfo
 
             foreach (CSteamID sid in activePlayers)
             {
-                if (mPeers.ContainsKey(sid))
-                    continue;
+                lock (mPeersLock)
+                {
+                    if (mPeers.ContainsKey(sid))
+                        continue;
+                }
 
+                // Talks to Steam: outside the lock.
                 var newPeerInfo = new SteamPeerInfo(GetPeer(sid));
                 if (newPeerInfo.peer is null)
                     Logger.WriteLine($"[PEER CONNECT] Player \"{sid}\" was detected, but we don't have a P2P connection to them yet");
-                mPeers.Add(sid, newPeerInfo);
-                mSessionRevision++;
+                lock (mPeersLock)
+                {
+                    if (!mPeers.ContainsKey(sid))
+                    {
+                        mPeers.Add(sid, newPeerInfo);
+                        mSessionRevision++;
+                    }
+                }
             }
         }
 
         public static IEnumerable<SteamPeerBase> GetPeers()
         {
-            return mPeers.Values.Where(info => info.peer != null).Select(info => info.peer);
+            // Snapshot: the UI enumerates this (bindings, RelationText) while the worker
+            // thread may be parsing and mutating the dictionary at the same time.
+            lock (mPeersLock)
+            {
+                return mPeers.Values.Where(info => info.peer != null).Select(info => info.peer).ToArray();
+            }
         }
     }
 }

@@ -13,6 +13,13 @@ namespace SteamP2PInfo
         private static DateTime lastLogCreated;
         private static string lastLoggedGame = "";
 
+        /// <summary>
+        /// The log is written from the UI thread, the peer worker thread and the exit
+        /// watchdog, so every write is serialised here. Failures are swallowed: logging
+        /// must never be the reason the tool dies or hangs.
+        /// </summary>
+        private static readonly object mLogLock = new object();
+
         private static void CreateOrOpenLogFile()
         {
             DateTime dateTime = DateTime.Now;
@@ -37,16 +44,34 @@ namespace SteamP2PInfo
 
         public static void Write(string message)
         {
-            if (Config.GameConfig.Current == null || !Config.GameConfig.Current.LogActivity) return;
-            CreateOrOpenLogFile();
-            if (fs != null) fs.Write($"[{DateTime.Now:HH:mm:ss.ff}] {message}");
+            try
+            {
+                if (Config.GameConfig.Current == null || !Config.GameConfig.Current.LogActivity) return;
+                lock (mLogLock)
+                {
+                    CreateOrOpenLogFile();
+                    if (fs != null) fs.Write($"[{DateTime.Now:HH:mm:ss.ff}] {message}");
+                }
+            }
+            catch (Exception)
+            {
+            }
         }
 
         public static void WriteLine(string message)
         {
-            if (Config.GameConfig.Current == null || !Config.GameConfig.Current.LogActivity) return;
-            CreateOrOpenLogFile();
-            if (fs != null) fs.WriteLine($"[{DateTime.Now:HH:mm:ss.ff}] {message}");
+            try
+            {
+                if (Config.GameConfig.Current == null || !Config.GameConfig.Current.LogActivity) return;
+                lock (mLogLock)
+                {
+                    CreateOrOpenLogFile();
+                    if (fs != null) fs.WriteLine($"[{DateTime.Now:HH:mm:ss.ff}] {message}");
+                }
+            }
+            catch (Exception)
+            {
+            }
         }
     }
 }
