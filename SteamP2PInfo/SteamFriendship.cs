@@ -238,12 +238,22 @@ namespace SteamP2PInfo
             {
                 HttpWebResponse response = ex.Response as HttpWebResponse;
                 if (response != null && response.StatusCode == HttpStatusCode.Unauthorized)
+                {
                     result.Hidden = true; // the player hid the friends list
+                    Logger.WriteLine("[FRIENDSHIP] " + steamId + ": Web API said 401, friends list is private");
+                }
+                else
+                {
+                    Logger.WriteLine("[FRIENDSHIP] " + steamId + ": Web API call failed (" +
+                        SteamHttp.RouteDescription + "): " + ex.Message);
+                }
 
                 return null;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Logger.WriteLine("[FRIENDSHIP] " + steamId + ": Web API call failed (" +
+                    SteamHttp.RouteDescription + "): " + ex.Message);
                 return null;
             }
 
@@ -260,8 +270,12 @@ namespace SteamP2PInfo
 
         /// <summary>
         /// Public "friends" tab of the community profile: no key required, one
-        /// `data-steamid` entry per friend. A player who hides the list (or has no
-        /// friends at all) gets an empty container, which is reported as hidden.
+        /// `data-steamid` entry per friend.
+        ///
+        /// Only a page that *says* the list is private counts as hidden. A page with
+        /// no entries and no such wording - a sign-in wall, a block page, a markup
+        /// change - is not an answer at all, so it stays "unknown" and is retried.
+        /// (Reporting those as "private" is what wrongly labelled open profiles.)
         /// </summary>
         private static HashSet<ulong> FetchFromCommunityPage(ulong steamId, FetchResult result)
         {
@@ -271,19 +285,55 @@ namespace SteamP2PInfo
                 html = SteamHttp.DownloadWithFallback(
                     "https://steamcommunity.com/profiles/" + steamId + "/friends/?l=english", true);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Logger.WriteLine("[FRIENDSHIP] " + steamId + ": friends page download failed (" +
+                    SteamHttp.RouteDescription + "): " + ex.Message);
                 return null;
             }
 
             HashSet<ulong> friends = ParseCommunityFriends(html);
-            if (friends.Count == 0)
+            if (friends.Count > 0)
+                return friends;
+
+            if (LooksLikePrivateFriendsList(html))
             {
                 result.Hidden = true;
+                Logger.WriteLine("[FRIENDSHIP] " + steamId + ": Steam reports the friends list as " +
+                    "private (" + html.Length + " bytes)");
                 return null;
             }
 
-            return friends;
+            Logger.WriteLine("[FRIENDSHIP] " + steamId + ": friends page had no entries and no " +
+                "private marker - treated as \"not answered\" (" + SteamHttp.RouteDescription +
+                ", " + html.Length + " bytes, title=\"" + PageTitle(html) + "\")");
+            return null;
+        }
+
+        /// <summary>
+        /// True when Steam's own wording says the friends list is hidden. Checked in
+        /// both languages because Steam may answer in the account's language.
+        /// </summary>
+        internal static bool LooksLikePrivateFriendsList(string html)
+        {
+            if (string.IsNullOrEmpty(html))
+                return false;
+
+            return html.IndexOf("friends list is private", StringComparison.OrdinalIgnoreCase) >= 0
+                || html.IndexOf("friendslist is private", StringComparison.OrdinalIgnoreCase) >= 0
+                || html.IndexOf("\u597D\u53CB\u5217\u8868\u662F\u79C1\u5BC6", StringComparison.Ordinal) >= 0
+                || html.IndexOf("\u597D\u53CB\u5217\u8868\u4E3A\u79C1\u5BC6", StringComparison.Ordinal) >= 0;
+        }
+
+        /// <summary>Title of a fetched page, for the diagnostic log lines.</summary>
+        internal static string PageTitle(string html)
+        {
+            if (string.IsNullOrEmpty(html))
+                return "";
+
+            Match title = Regex.Match(html, "<title[^>]*>(.*?)</title>",
+                RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            return title.Success ? title.Groups[1].Value.Trim() : "";
         }
 
         /// <summary>

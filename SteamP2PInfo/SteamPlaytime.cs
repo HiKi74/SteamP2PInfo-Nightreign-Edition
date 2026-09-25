@@ -136,6 +136,7 @@ namespace SteamP2PInfo
 
                 // 2) Public profile "Games" page (no key required).
                 bool gamesPageDownloaded = false;
+                string gamesPageError = null;
                 try
                 {
                     string html = SteamHttp.DownloadWithFallback(
@@ -146,15 +147,17 @@ namespace SteamP2PInfo
                     if (minutes != null)
                         return FormatHours(minutes.Value);
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
                     // Network problem (blocked / no proxy): fall through and try
                     // the profile page, which may still be reachable.
+                    gamesPageError = ex.Message;
                 }
 
                 // 3) "Favorite Game" showcase on the profile page. Players who
                 //    keep their game details private often still show total hours
                 //    in this showcase, so it is the last chance to get a number.
+                string showcaseError = null;
                 try
                 {
                     string profile = SteamHttp.DownloadWithFallback(
@@ -163,8 +166,9 @@ namespace SteamP2PInfo
                     if (showcaseMinutes != null)
                         return FormatHours(showcaseMinutes.Value);
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    showcaseError = ex.Message;
                 }
 
                 // Nothing public to read. If we at least reached Steam, report the
@@ -172,6 +176,12 @@ namespace SteamP2PInfo
                 if (gamesPageDownloaded || apiReportedNotPublic)
                     return PRIVATE_TEXT;
 
+                // Say why, otherwise "—" is indistinguishable from "private" in the
+                // log and there is nothing to diagnose a blocked network with.
+                Logger.WriteLine("[PLAYTIME] " + steamId + ": no source answered (route " +
+                    SteamHttp.RouteDescription + "; games page: " +
+                    (gamesPageDownloaded ? "downloaded, no value" : (gamesPageError ?? "failed")) +
+                    "; showcase: " + (showcaseError ?? "downloaded, no value") + ")");
                 return ERROR_TEXT;
             }
             catch (Exception)

@@ -25,6 +25,32 @@ namespace SteamP2PInfo
         private static DateTime mLastProxyProbe = DateTime.MinValue;
 
         /// <summary>
+        /// Route of the most recent attempt ("direct" or "proxy:7897"), with a marker
+        /// when it failed. Only used to make the lookup logs diagnosable - a blocked
+        /// community page and a private one look the same otherwise.
+        /// </summary>
+        private static string mLastRoute = "unknown";
+
+        public static string RouteDescription
+        {
+            get
+            {
+                lock (mLock)
+                    return mLastRoute;
+            }
+        }
+
+        private static void RememberRoute(WebProxy proxy, bool ok)
+        {
+            string route = proxy == null || proxy.Address == null
+                ? "direct"
+                : "proxy:" + proxy.Address.Port;
+
+            lock (mLock)
+                mLastRoute = ok ? route : route + " (failed)";
+        }
+
+        /// <summary>
         /// Downloads a URL through the detected local proxy (or through the
         /// system/default route when <paramref name="preferProxy"/> is false) and
         /// retries through the other route when the first one fails.
@@ -37,6 +63,7 @@ namespace SteamP2PInfo
 
             try
             {
+                RememberRoute(first, true);
                 string result = Download(url, first);
                 if (first != null)
                     ReportProxySuccess();
@@ -44,11 +71,13 @@ namespace SteamP2PInfo
             }
             catch (Exception firstError)
             {
+                RememberRoute(first, false);
                 if (second == null || ReferenceEquals(first, second))
                     throw;
 
                 try
                 {
+                    RememberRoute(second, true);
                     string result = Download(url, second);
                     if (second != null)
                         ReportProxySuccess();
@@ -58,6 +87,7 @@ namespace SteamP2PInfo
                 }
                 catch (Exception)
                 {
+                    RememberRoute(second, false);
                     ReportProxyFailure();
                     throw firstError;
                 }
