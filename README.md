@@ -9,6 +9,13 @@ connection viewer dedicated to *ELDEN RING NIGHTREIGN*.
 > Chinese; there is no English build. The older English zip stays in the V1.0.2
 > release for reference and is not maintained.
 
+> **本分支（`v1.03_alpha`）是实验分支：不提供「关系」列。**
+> 主界面与悬浮窗都不显示这一列，配置页也没有对应开关，工具**不会读取任何好友列表**。
+> 其余功能与主线一致。
+> **This branch (`v1.03_alpha`) is the experimental build: it has no relation column.**
+> The main window and the overlay do not show one, the config page has no switch for it,
+> and the tool does not read friends lists at all. Everything else matches the main line.
+
 实时显示联机玩家的昵称、SteamID、**游玩时长**、Ping 与连接质量，带可自定义
 悬浮窗。 / Shows each online player's name, SteamID, **playtime**, ping and
 connection quality, with a customizable in-game overlay.
@@ -39,10 +46,7 @@ connection quality, with a customizable in-game overlay.
 - 固定列宽悬浮窗，信息始终对齐 / Fixed-width overlay columns, always aligned
 - 全中文界面（含悬浮窗、配置页与使用说明） / Chinese UI throughout
 - 可选 Steam Web API Key，更稳定获取游玩时长 / Optional Web API key support
-- 好友关系列：好友 / 野排 / 私密 / 查询中。不需要 API Key：未填写时自动读取对方
-  公开的社区好友页
-  Friends column: 好友 (premade pair) / 野排 (not friends) / 私密 (list hidden) /
-  查询中 (looking up); works without an API key via the public community friends page
+- 不含「关系」列，也不读取好友列表 / no relation column, no friends-list lookups
 - 查询策略：读到结果就定住、不再重复查询；没读到时每 2 分钟重试；检测到新玩家
   （新的一局）时清空缓存重新查询
   Lookups are done once and kept; empty results retry every 2 min, and a newly
@@ -76,10 +80,8 @@ connection quality, with a customizable in-game overlay.
   Playtime "-"? Network can't reach Steam; use a proxy or an API key.
 - 时长“未公开”/“Private”？对方游戏详情私密，公开方式无法获取。
   "Private"? The player's game details are private (Steam privacy rule).
-- “关系”列的四种状态？“好友”= 互为 Steam 好友（大概率双排）；“野排”= 已确定不是
-  好友；“私密”= 双方好友列表都隐藏，无法判断（不会误报）；“查询中”= 正在读取。
-  Relation states? 好友 = mutual Steam friends; 野排 = proven not friends;
-  私密 = both lists hidden, so the tool refuses to guess; 查询中 = lookup running.
+- 有「关系」列吗？没有 —— 本分支不带这一列，也不会读取好友列表。
+  Is there a relation column? No - this branch has none and does not read friends lists.
 - 关掉游戏后 Steam 还显示“游戏中”？工具也被 Steam 算作游戏进程，所以它必须一起
   退出，Steam 才会解除该状态。实测 Steam 只会在自己的清理周期里删掉工具的进程
   记录（一次实测为 4 分 39 秒），所以游戏和工具都退出后状态仍可能残留一会儿；

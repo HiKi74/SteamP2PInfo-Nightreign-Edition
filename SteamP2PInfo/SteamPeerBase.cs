@@ -96,6 +96,8 @@ namespace SteamP2PInfo
         /// "野排" when a readable friends list proves that they are not, "私密"
         /// when Steam hides the lists needed to answer, and "查询中" while the
         /// lookups are still running. See SteamFriendship for details.
+        ///
+        /// 本分支未使用：界面不绑定这一列，因此这里也不会触发任何查询。
         /// </summary>
         public string RelationText
         {

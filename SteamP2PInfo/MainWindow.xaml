@@ -39,7 +39,7 @@
                         <DataGridTextColumn Header="玩家昵称" IsReadOnly="True" Binding="{Binding Name}"></DataGridTextColumn>
                         <DataGridTextColumn Header="Steam ID" IsReadOnly="True" Binding="{Binding SteamID}" x:Name="ColumnSteamID"></DataGridTextColumn>
                         <DataGridTextColumn Header="游玩时长" IsReadOnly="True" Binding="{Binding PlaytimeText}"></DataGridTextColumn>
-                        <DataGridTextColumn Header="关系" IsReadOnly="True" Binding="{Binding RelationText}"></DataGridTextColumn>
+                        <!-- 本分支不显示「关系」列。见 README。 -->
                         <!--<DataGridTextColumn Header="Main Steam ID" IsReadOnly="True" Binding="{Binding MainSteamID}" x:Name="ColumnSteamIDMain"></DataGridTextColumn>-->
                         <DataGridTextColumn Header="Ping" IsReadOnly="True" Binding="{Binding PingText}">
                             <DataGridTextColumn.ElementStyle>
