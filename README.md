@@ -61,7 +61,8 @@ connection quality, with a customizable in-game overlay.
 
 ## 截图 / Screenshots
 
-（待补充 / TODO）
+<img width="800" height="450" alt="image" src="https://github.com/user-attachments/assets/2325b62f-d9be-4f54-a2a5-993a9170cda8" />
+
 
 ## 使用方法 / Usage
 
